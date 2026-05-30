@@ -1,0 +1,1113 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <script>
+        window.onerror = function(msg, url, line, col, error) {
+            alert("JS ERROR: " + msg + "\nLine: " + line + "\nCol: " + col + "\nError: " + error);
+        };
+        window.onunhandledrejection = function(event) {
+            alert("Unhandled Promise Rejection: " + event.reason);
+        };
+    </script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Konan J 주식 환율 알리미 | 체인소맨 금융정보서비스</title>
+    <meta name="description"
+        content="실시간 주가지수 시뮬레이터, 여행지 환율 비교 및 2000년부터 현재까지 원화 실질 가치와 달러 대비 주요 통화 변동 추이를 제공하는 프리미엄 투자 대시보드입니다.">
+    <link rel="stylesheet" href="style.css">
+    <style>
+        .floating-tooltip {
+            position: fixed;
+            pointer-events: none;
+            background: rgba(13, 20, 38, 0.95);
+            backdrop-filter: blur(12px) saturate(160%);
+            -webkit-backdrop-filter: blur(12px) saturate(160%);
+            color: #f8fafc;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 12px;
+            padding: 12px 16px;
+            font-size: 12px;
+            font-family: inherit;
+            box-shadow: 0 20px 45px rgba(0, 0, 0, 0.6), inset 0 1px 1px rgba(255, 255, 255, 0.15);
+            z-index: 999999;
+            transition: opacity 0.12s ease;
+            opacity: 0;
+            display: none;
+            line-height: 1.6;
+            min-width: 160px;
+            max-width: 320px;
+        }
+
+        .floating-tooltip .tooltip-title {
+            font-weight: 700;
+            font-size: 13px;
+            color: #ffffff;
+            margin-bottom: 6px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            padding-bottom: 4px;
+            white-space: nowrap;
+        }
+
+        .floating-tooltip .tooltip-row {
+            margin: 3px 0;
+            display: flex;
+            align-items: flex-start;
+            gap: 6px;
+            color: #94a3b8;
+            font-size: 12px;
+            white-space: nowrap;
+        }
+    </style>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/date-fns@2.29.3/date-fns.min.js"></script>
+    <script
+        src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+    <script
+        src="https://cdn.jsdelivr.net/npm/chartjs-chart-financial@0.1.1/dist/chartjs-chart-financial.min.js"></script>
+    <!-- Chart.js Zoom 플러그인 (스크롤 줌 / 패닝 용) -->
+    <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
+</head>
+
+<body>
+    <!-- 배경 디자인용 발광 레이어 -->
+    <div class="bg-glow-container">
+        <div class="bg-glow-1"></div>
+        <div class="bg-glow-2"></div>
+    </div>
+
+    <div class="dashboard-container">
+        <!-- 상단 헤더 -->
+        <header>
+            <div class="logo-area">
+                <img src="Chart_Logo.jpeg" alt="Konan J Logo" class="logo-img">
+                <div class="logo-text">
+                    <h1>Konan J 주식 환율 알리미</h1>
+                    <span>체인소맨 금융정보서비스</span>
+                </div>
+            </div>
+            <div class="update-indicator">
+                <span class="pulse-dot"></span>
+                <span id="last-update-time">실시간 업데이트 활성화됨</span>
+            </div>
+        </header>
+
+        <!-- 상단 주요 시장 통계 바 -->
+        <div class="market-status-bar">
+            <!-- 공포와 탐욕 지수 -->
+            <div class="status-badge-card porsche-gauge-card" id="card-fear-greed-summary">
+                <div class="porsche-gauge-container">
+                    <svg viewBox="0 0 240 140" class="gauge-svg">
+                        <defs>
+                            <filter id="glow-red" x="-20%" y="-20%" width="140%" height="140%">
+                                <feGaussianBlur stdDeviation="4" result="blur" />
+                                <feComposite in="SourceGraphic" in2="blur" operator="over" />
+                            </filter>
+                            <linearGradient id="gauge-grad" x1="0%" y1="0%" x2="100%" y2="0%">
+                                <stop offset="0%" stop-color="#ef4444" /> <!-- Red -->
+                                <stop offset="25%" stop-color="#f97316" /> <!-- Orange -->
+                                <stop offset="50%" stop-color="#eab308" /> <!-- Yellow -->
+                                <stop offset="75%" stop-color="#22c55e" /> <!-- Green -->
+                                <stop offset="100%" stop-color="#06b6d4" /> <!-- Cyan -->
+                            </linearGradient>
+                            <filter id="drop-shadow">
+                                <feDropShadow dx="0" dy="8" stdDeviation="6" flood-opacity="0.5" />
+                            </filter>
+                        </defs>
+                        <!-- Background track -->
+                        <path class="gauge-track" d="M 30 120 A 90 90 0 0 1 210 120" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="12" stroke-linecap="round" />
+                        <!-- Colored active track (using stroke-dasharray in JS) -->
+                        <path class="gauge-fill" id="fg-gauge-fill" d="M 30 120 A 90 90 0 0 1 210 120" fill="none" stroke="url(#gauge-grad)" stroke-width="12" stroke-linecap="round" stroke-dasharray="283" stroke-dashoffset="283" />
+                        <!-- Tick marks overlay (created via dotted stroke) -->
+                        <path class="gauge-ticks" d="M 30 120 A 90 90 0 0 1 210 120" fill="none" stroke="rgba(0,0,0,0.8)" stroke-width="13" stroke-dasharray="2 8.1" />
+                        
+                        <!-- Needle Pivot -->
+                        <circle cx="120" cy="120" r="14" fill="#1e293b" stroke="#334155" stroke-width="2" filter="url(#drop-shadow)" />
+                        <!-- Needle -->
+                        <g id="fg-gauge-needle" style="transform-origin: 120px 120px; transform: rotate(-90deg); transition: transform 1.5s cubic-bezier(0.34, 1.56, 0.64, 1);">
+                            <path d="M 116 120 L 124 120 L 121 40 L 119 40 Z" fill="#ef4444" filter="url(#glow-red)" />
+                            <circle cx="120" cy="120" r="6" fill="#0f172a" />
+                        </g>
+                    </svg>
+                    
+                    <div class="gauge-text-content">
+                        <div class="gauge-label">Fear & Greed</div>
+                        <div class="gauge-value" id="summary-fg-val">--</div>
+                        <div class="gauge-status" id="summary-fg-text">분석중</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 마켓 한줄 뉴스 및 브리프 -->
+            <div class="status-badge-card market-news-ticker">
+                <span class="ticker-icon">MARKET REPORT</span>
+                <span class="ticker-content" id="market-brief-text">
+                    미 연준 금리 인하 기대감 속 기술주 중심 강세 지속... 원/달러 환율은 강달러 기조에 1,350원선 유지.
+                </span>
+            </div>
+        </div>
+
+        <!-- 탭 메뉴 내비게이션 -->
+        <nav class="tab-navigation">
+            <button class="tab-btn active" id="tab-overview" onclick="switchTab('overview')" style="flex: 1;">
+                <span class="main-text">시장</span>
+                <span class="sub-text">개요</span>
+            </button>
+            <button class="tab-btn" id="tab-history" onclick="switchTab('history')" style="flex: 1;">
+                <span class="main-text">역사적 변동 분석</span>
+                <span class="sub-text">(2000~현재)</span>
+            </button>
+            <button class="tab-btn" id="tab-travel" onclick="switchTab('travel')" style="flex: 1;">
+                <span class="main-text">여행지 환율</span>
+                <span class="sub-text">계산기</span>
+            </button>
+            <button class="tab-btn" id="tab-sentiment" onclick="switchTab('sentiment')" style="flex: 1;">
+                <span class="main-text">시장 심리</span>
+                <span class="sub-text">지표</span>
+            </button>
+            <button class="tab-btn" id="tab-detail" onclick="switchTab('detail')" style="flex: 1;">
+                <span class="main-text">종목 분석</span>
+                <span class="sub-text">상세 차트</span>
+            </button>
+        </nav>
+
+        <!-- 외부 링크 내비게이션 (메인 탭과 동일한 너비/정렬 유지) -->
+        <nav class="tab-navigation">
+            <a href="https://markets.hankyung.com/" target="_blank" class="tab-btn external-link-btn"
+                style="text-decoration: none; display: flex; flex-direction: column; justify-content: center; align-items: center; flex: 1;">
+                <span class="main-text">컨센서스</span>
+                <span class="sub-text">외부 링크</span>
+            </a>
+            <a href="https://markets.hankyung.com/consensus" target="_blank" class="tab-btn external-link-btn"
+                style="text-decoration: none; display: flex; flex-direction: column; justify-content: center; align-items: center; flex: 1;">
+                <span class="main-text">애널리스트 리포트</span>
+                <span class="sub-text">외부 링크</span>
+            </a>
+            <a href="https://markets.hankyung.com/investment/investors" target="_blank"
+                class="tab-btn external-link-btn"
+                style="text-decoration: none; display: flex; flex-direction: column; justify-content: center; align-items: center; flex: 1;">
+                <span class="main-text">투자 주체별 동향</span>
+                <span class="sub-text">외부 링크</span>
+            </a>
+            <a href="https://markets.hankyung.com/marketmap/kospi" target="_blank" class="tab-btn external-link-btn"
+                style="text-decoration: none; display: flex; flex-direction: column; justify-content: center; align-items: center; flex: 1;">
+                <span class="main-text">마켓 MAP 코스피</span>
+                <span class="sub-text">외부 링크</span>
+            </a>
+            <a href="https://markets.hankyung.com/marketmap/kosdaq" target="_blank" class="tab-btn external-link-btn"
+                style="text-decoration: none; display: flex; flex-direction: column; justify-content: center; align-items: center; flex: 1;">
+                <span class="main-text">마켓 MAP 코스닥</span>
+                <span class="sub-text">외부 링크</span>
+            </a>
+            <a href="https://markets.hankyung.com/index-info/volume" target="_blank" class="tab-btn external-link-btn"
+                style="text-decoration: none; display: flex; flex-direction: column; justify-content: center; align-items: center; flex: 1;">
+                <span class="main-text">거래량</span>
+                <span class="sub-text">외부 링크</span>
+            </a>
+        </nav>
+
+        <!-- 항상 표시되는 전역 티커 검색 섹션 -->
+        <div class="ticker-search-container" style="margin-top: 20px;">
+            <div class="ticker-search-wrapper">
+                <!-- 거래소 선택 드롭다운 -->
+                <div class="exchange-dropdown-container">
+                    <button class="exchange-dropdown-btn" id="exchange-dropdown-btn">
+                        <span id="selected-exchange-text">나스닥 (NASDAQ)</span>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-left: 4px;">
+                            <polyline points="6 9 12 15 18 9"></polyline>
+                        </svg>
+                    </button>
+                    <div class="exchange-dropdown-menu" id="exchange-dropdown-menu" style="display: none;">
+                        <div class="exchange-option" data-exchange="nasdaq" data-name="나스닥 (NASDAQ)">나스닥 (NASDAQ)</div>
+                        <div class="exchange-option" data-exchange="nyse" data-name="뉴욕증권거래소 (NYSE)">뉴욕증권거래소 (NYSE)
+                        </div>
+                        <div class="exchange-option" data-exchange="kospi" data-name="코스피 (KOSPI)">코스피 (KOSPI)</div>
+                        <div class="exchange-option" data-exchange="kosdaq" data-name="코스닥 (KOSDAQ)">코스닥 (KOSDAQ)</div>
+                        <div class="exchange-option" data-exchange="japan" data-name="도쿄증권거래소 (TSE)">도쿄증권거래소 (TSE)</div>
+                    </div>
+                </div>
+
+                <!-- 검색 입력창 및 자동완성 -->
+                <div class="ticker-input-area">
+                    <div class="ticker-input-glow">
+                        <span class="search-icon">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <circle cx="11" cy="11" r="8"></circle>
+                                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                            </svg>
+                        </span>
+                        <input type="text" class="ticker-input" id="ticker-search-input"
+                            placeholder="종목 코드 또는 이름을 검색하세요 (예: AAPL, 삼성전자)" autocomplete="off">
+                    </div>
+
+                    <!-- 자동완성 드롭다운 -->
+                    <div class="autocomplete-dropdown" id="ticker-autocomplete-dropdown" style="display: none;">
+                        <ul class="autocomplete-list" id="ticker-autocomplete-list">
+                            <!-- JS에서 동적 생성됨 -->
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- [VIEW 1] 시장 개요 탭 -->
+        <main class="tab-view active" id="view-overview">
+            <!-- 새로운 시장 종합 대시보드 -->
+            <div class="market-summary-box"
+                style="margin-bottom: 40px; background: rgba(13, 20, 38, 0.4); border: 1px solid rgba(255, 255, 255, 0.07); border-radius: 18px; padding: 30px; box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.08), 0 12px 32px rgba(0, 0, 0, 0.2); backdrop-filter: blur(25px) saturate(160%);">
+                <div class="summary-header">
+                    <div style="display: flex; align-items: center; gap: 12px; position: relative; flex-wrap: wrap;">
+                        <!-- 카루셀 왼쪽 화살표 -->
+                        <button id="summary-slide-prev" class="slider-arrow-btn">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <polyline points="15 18 9 12 15 6"></polyline>
+                            </svg>
+                        </button>
+                        <h2 class="section-title" id="market-slide-title" style="margin: 0; font-size: 20px;">시장종합 (한국)</h2>
+                        <!-- 카루셀 오른쪽 화살표 -->
+                        <button id="summary-slide-next" class="slider-arrow-btn">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <polyline points="9 18 15 12 9 6"></polyline>
+                            </svg>
+                        </button>
+                        <span style="color: var(--text-muted); font-size: 13px; margin-left: 12px;" id="market-summary-date">2026.05.27 장마감</span>
+                    </div>
+
+                    <!-- 기간 및 모드 선택 버튼 (시장종합) -->
+                    <div class="timeframe-buttons-container">
+                        <div class="chart-mode-toggle" id="summary-mode-toggle">
+                            <button class="mode-btn active" data-mode="line">📈 라인</button>
+                            <button class="mode-btn" data-mode="candlestick">🕯️ 캔들</button>
+                        </div>
+                        <div class="timeframe-buttons" id="summary-timeframe-buttons">
+                            <button class="time-btn" data-period="5y">5년</button>
+                            <button class="time-btn" data-period="3y">3년</button>
+                            <button class="time-btn" data-period="1y">1년</button>
+                            <button class="time-btn" data-period="6mo">6개월</button>
+                            <button class="time-btn active" data-period="3mo">3개월</button>
+                            <button class="time-btn" data-period="1mo">1개월</button>
+                            <button class="time-btn" data-period="1wk">1주일</button>
+                            <button class="time-btn" data-period="1d">1일</button>
+                            <button class="time-btn" data-period="1h">1시간</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 통합 차트 영역 -->
+                <div class="summary-chart-container"
+                    style="height: 260px; width: 100%; position: relative; margin-bottom: 8px;">
+                    <canvas id="chart-market-summary"></canvas>
+                </div>
+                <!-- 통합 차트 거래량 영역 -->
+                <div class="summary-volume-container"
+                    style="height: 100px; width: 100%; position: relative; margin-bottom: 24px; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 16px;">
+                    <canvas id="chart-summary-volume"></canvas>
+                </div>
+
+                <!-- 매매동향 및 지수 요약 그리드 (3열) -->
+                <!-- 동적 매매동향 및 지수 요약 그리드 (JS에서 생성) -->
+                <div class="summary-data-grid" id="dynamic-summary-data-grid">
+                    <!-- JS injects dynamic cards here -->
+                </div>
+            </div>
+
+            <div class="section-title-wrapper">
+                <h2 class="section-title">주요 시장 환율 현황</h2>
+            </div>
+
+            <!-- 환율 정보 2열 분할 레이아웃 -->
+            <div class="market-grid-container">
+                <!-- 원화대비 주요 환율 카드들 -->
+                <section class="exchange-section">
+                    <h3 class="status-label" style="margin-bottom: 16px;">원화대비 주요 환율 (KRW Base)</h3>
+                    <div class="exchange-grid" id="main-exchange-grid">
+                        <!-- 달러 -->
+                        <div class="currency-card" id="curr-usd">
+                            <div class="curr-flag-name">
+                                <span class="curr-emoji">🇺🇸</span>
+                                <div>
+                                    <span class="curr-code">USD / KRW</span>
+                                    <span class="curr-name">미국 달러</span>
+                                </div>
+                            </div>
+                            <div class="curr-value-row">
+                                <span class="curr-value" id="rate-usd">1,352.40</span>
+                                <span class="curr-change bullish-color" id="rate-change-usd">+3.90 (+0.29%)</span>
+                            </div>
+                        </div>
+
+                        <!-- 엔화 -->
+                        <div class="currency-card" id="curr-jpy">
+                            <div class="curr-flag-name">
+                                <span class="curr-emoji">🇯🇵</span>
+                                <div>
+                                    <span class="curr-code">JPY / KRW</span>
+                                    <span class="curr-name">일본 엔 (100엔)</span>
+                                </div>
+                            </div>
+                            <div class="curr-value-row">
+                                <span class="curr-value" id="rate-jpy">861.20</span>
+                                <span class="curr-change bearish-color" id="rate-change-jpy">-3.60 (-0.42%)</span>
+                            </div>
+                        </div>
+
+                        <!-- 유로화 -->
+                        <div class="currency-card" id="curr-eur">
+                            <div class="curr-flag-name">
+                                <span class="curr-emoji">🇪🇺</span>
+                                <div>
+                                    <span class="curr-code">EUR / KRW</span>
+                                    <span class="curr-name">유로화</span>
+                                </div>
+                            </div>
+                            <div class="curr-value-row">
+                                <span class="curr-value" id="rate-eur">1,462.60</span>
+                                <span class="curr-change bearish-color" id="rate-change-eur">-2.50 (-0.17%)</span>
+                            </div>
+                        </div>
+
+                        <!-- 위안화 -->
+                        <div class="currency-card" id="curr-cny">
+                            <div class="curr-flag-name">
+                                <span class="curr-emoji">🇨🇳</span>
+                                <div>
+                                    <span class="curr-code">CNY / KRW</span>
+                                    <span class="curr-name">중국 위안</span>
+                                </div>
+                            </div>
+                            <div class="curr-value-row">
+                                <span class="curr-value" id="rate-cny">186.50</span>
+                                <span class="curr-change bullish-color" id="rate-change-cny">+0.40 (+0.21%)</span>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- 주요국 통화 달러대비 가치 변동률 -->
+                <section class="dollar-basis-section">
+                    <h3 class="status-label" style="margin-bottom: 16px;">달러 대비 환율 및 통화가치 변동 (USD Basis)</h3>
+                    <div class="dollar-basis-list" id="dollar-basis-list">
+                        <!-- EUR/USD -->
+                        <div class="dollar-basis-item">
+                            <span class="basis-name" id="basis-lbl-eur">유로화 (EUR/USD)</span>
+                            <div class="basis-value-group">
+                                <span class="basis-val" id="basis-val-eur">1.0815</span>
+                                <span class="basis-change bearish-badge" id="basis-chg-eur">-0.45%</span>
+                            </div>
+                        </div>
+                        <!-- USD/JPY -->
+                        <div class="dollar-basis-item">
+                            <span class="basis-name" id="basis-lbl-jpy">엔화 (USD/JPY)</span>
+                            <div class="basis-value-group">
+                                <span class="basis-val" id="basis-val-jpy">157.04</span>
+                                <span class="basis-change bullish-badge" id="basis-chg-jpy">+0.80%</span>
+                            </div>
+                        </div>
+                        <!-- GBP/USD -->
+                        <div class="dollar-basis-item">
+                            <span class="basis-name" id="basis-lbl-gbp">영국 파운드 (GBP/USD)</span>
+                            <div class="basis-value-group">
+                                <span class="basis-val" id="basis-val-gbp">1.2678</span>
+                                <span class="basis-change bearish-badge" id="basis-chg-gbp">-0.25%</span>
+                            </div>
+                        </div>
+                        <!-- USD/CNY -->
+                        <div class="dollar-basis-item">
+                            <span class="basis-name" id="basis-lbl-cny">중국 위안 (USD/CNY)</span>
+                            <div class="basis-value-group">
+                                <span class="basis-val" id="basis-val-cny">7.2480</span>
+                                <span class="basis-change bullish-badge" id="basis-chg-cny">+0.08%</span>
+                            </div>
+                        </div>
+                        <!-- USD/KRW -->
+                        <div class="dollar-basis-item">
+                            <span class="basis-name" id="basis-lbl-krw">한국 원화 (USD/KRW)</span>
+                            <div class="basis-value-group">
+                                <span class="basis-val" id="basis-val-krw">1,352.40</span>
+                                <span class="basis-change bullish-badge" id="basis-chg-krw">+0.29%</span>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </main>
+
+        <!-- [VIEW 2] 역사적 분석 탭 -->
+        <section class="tab-view" id="view-history">
+            <div class="historical-container">
+                <div class="historical-controls-wrapper">
+                    <div>
+                        <h2 class="section-title">역사적 통화 가치 및 자산 변동성 (2000년 ~ 현재)</h2>
+                        <p class="historical-description">
+                            2000년 닷컴버블부터 <strong>2008~2009년 글로벌 금융위기 최저점</strong>을 지나 현재까지의 자산군 장기 흐름을 시각화합니다.
+                            원화의 실질가치(실질실효환율 REER)가 금융위기 당시 어떻게 급락하고 극복했는지 살펴보세요. (2000년 가치 = 100 기준 지수화)
+                        </p>
+                    </div>
+                    <div class="historical-toggles">
+                        <button class="toggle-btn active" id="toggle-reer" onclick="toggleHistoricalDataset('reer')">
+                            <span class="toggle-indicator-dot" style="background-color: #00f2fe;"></span>원화 실질가치 (REER)
+                        </button>
+                        <button class="toggle-btn active" id="toggle-usdVal"
+                            onclick="toggleHistoricalDataset('usdVal')">
+                            <span class="toggle-indicator-dot" style="background-color: #6366f1;"></span>달러 가치 (DXY)
+                        </button>
+                        <button class="toggle-btn active" id="toggle-kospi" onclick="toggleHistoricalDataset('kospi')">
+                            <span class="toggle-indicator-dot" style="background-color: #00e676;"></span>KOSPI 지수
+                        </button>
+                        <button class="toggle-btn" id="toggle-sp500" onclick="toggleHistoricalDataset('sp500')">
+                            <span class="toggle-indicator-dot" style="background-color: #ff3d71;"></span>S&P 500 지수
+                        </button>
+                        <button class="toggle-btn" id="toggle-jpyVal" onclick="toggleHistoricalDataset('jpyVal')">
+                            <span class="toggle-indicator-dot" style="background-color: #ff9800;"></span>엔화 가치 (vs USD)
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 대형 historical 차트 영역 -->
+                <div class="big-chart-wrapper">
+                    <canvas id="chart-historical-main"></canvas>
+                </div>
+
+                <!-- 역사적 사건 요약 배너 -->
+                <div class="crisis-annotation-banner">
+                    <!-- 2008 금융위기 저점 -->
+                    <div class="crisis-card" id="crisis-card-2008">
+                        <span class="crisis-year-badge">2008 - 2009</span>
+                        <div class="crisis-text">
+                            <h4>글로벌 금융위기 (최저점)</h4>
+                            <p>리먼 브라더스 파산 후 신흥국 자금 유출로 원화 실질실효가치(REER)가 역사적 저점인 71.8로 추락. USD/KRW는 1,570원까지 급등.</p>
+                        </div>
+                    </div>
+                    <!-- 2020 팬데믹 -->
+                    <div class="crisis-card" id="crisis-card-2020">
+                        <span class="crisis-year-badge">2020</span>
+                        <div class="crisis-text">
+                            <h4>COVID-19 팬데믹 충격</h4>
+                            <p>전세계 자산 시장이 순간 폭락했으나 무제한 유동성 공급으로 KOSPI 3,300 돌파 및 원화 가치가 일시적으로 강력하게 회복.</p>
+                        </div>
+                    </div>
+                    <!-- 현재 고금리 기조 -->
+                    <div class="crisis-card" id="crisis-card-2026">
+                        <span class="crisis-year-badge normal">2024 - 현재</span>
+                        <div class="crisis-text">
+                            <h4>고금리 장기화 및 엔저 지속</h4>
+                            <p>미국 고금리가 지속되면서 달러화가 초강세를 띄고 있으며, 엔화 가치는 역사적 최저점 수준을 갱신 중(JPY/KRW 860원대 돌입).</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- [VIEW 3] 여행지 환율 계산기 탭 -->
+        <section class="tab-view" id="view-travel">
+            <div class="travel-page-container">
+                <div class="travel-header">
+                    <div
+                        style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px;">
+                        <div>
+                            <h2 class="section-title">주요 선호 여행지 환율 현황 & 계산기</h2>
+                            <p class="historical-description" style="margin-top: 6px;">
+                                해외 여행지의 환율 정보와 환전 금액을 간편하게 비교해보세요.
+                            </p>
+                        </div>
+                        <!-- 기준 통화 셀렉터 -->
+                        <div class="travel-base-selector">
+                            <span class="selector-label">기준 통화:</span>
+                            <button class="base-select-btn active" id="base-krw" onclick="setTravelBase('krw')">🇰🇷 원화
+                                (KRW)</button>
+                            <button class="base-select-btn" id="base-usd" onclick="setTravelBase('usd')">🇺🇸 달러
+                                (USD)</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 여행지 환율 그리드 -->
+                <div class="travel-grid" id="travel-currency-grid">
+                    <!-- 미국 달러 (원화 기준일 때 노출) -->
+                    <div class="travel-card" id="travel-card-usd">
+                        <div class="travel-meta">
+                            <div>
+                                <span class="curr-emoji">🇺🇸</span>
+                                <span class="curr-code" style="margin-left: 8px;">미국 달러 (USD)</span>
+                                <span class="travel-destinations">추천 여행지: 뉴욕, LA, 하와이, 괌</span>
+                            </div>
+                            <span class="curr-change bullish-color" id="travel-chg-usd">+0.00%</span>
+                        </div>
+                        <div class="travel-rate-section">
+                            <div class="travel-rate-box">
+                                <span class="travel-rate-label" id="travel-rate-lbl-usd">현재 환율 (1달러 기준)</span>
+                                <span class="travel-rate-val" id="travel-rate-val-usd">1,352.40 KRW</span>
+                            </div>
+                        </div>
+                        <div class="travel-calc-box">
+                            <span class="travel-calc-result" id="travel-res-usd">100 USD = 135,240 원</span>
+                            <input type="number" class="travel-calc-input" id="travel-input-usd" value="100"
+                                oninput="calculateTravelExchange('usd')">
+                        </div>
+                    </div>
+
+                    <!-- 대한민국 원화 (달러 기준일 때 노출) -->
+                    <div class="travel-card" id="travel-card-krw" style="display: none;">
+                        <div class="travel-meta">
+                            <div>
+                                <span class="curr-emoji">🇰🇷</span>
+                                <span class="curr-code" style="margin-left: 8px;">대한민국 원화 (KRW)</span>
+                                <span class="travel-destinations">추천 여행지: 서울, 제주, 부산, 경주</span>
+                            </div>
+                            <span class="curr-change" id="travel-chg-krw">+0.00%</span>
+                        </div>
+                        <div class="travel-rate-section">
+                            <div class="travel-rate-box">
+                                <span class="travel-rate-label" id="travel-rate-lbl-krw">현재 환율 (1달러 기준)</span>
+                                <span class="travel-rate-val" id="travel-rate-val-krw">1,352.40 KRW</span>
+                            </div>
+                        </div>
+                        <div class="travel-calc-box">
+                            <span class="travel-calc-result" id="travel-res-krw">1 USD = 1,352.40 원</span>
+                            <input type="number" class="travel-calc-input" id="travel-input-krw" value="1"
+                                oninput="calculateTravelExchange('krw')">
+                        </div>
+                    </div>
+
+                    <!-- 일본 엔화 -->
+                    <div class="travel-card" id="travel-card-jpy">
+                        <div class="travel-meta">
+                            <div>
+                                <span class="curr-emoji">🇯🇵</span>
+                                <span class="curr-code" style="margin-left: 8px;">일본 엔화 (JPY)</span>
+                                <span class="travel-destinations">추천 여행지: 도쿄, 오사카, 후쿠오카</span>
+                            </div>
+                            <span class="curr-change bearish-color" id="travel-chg-jpy">-0.42%</span>
+                        </div>
+                        <div class="travel-rate-section">
+                            <div class="travel-rate-box">
+                                <span class="travel-rate-label" id="travel-rate-lbl-jpy">현재 환율 (100엔 기준)</span>
+                                <span class="travel-rate-val" id="travel-rate-val-jpy">861.20 KRW</span>
+                            </div>
+                            <span class="travel-usd-basis-val" id="travel-usd-basis-jpy">1 USD = 157.04 JPY</span>
+                        </div>
+                        <div class="travel-calc-box">
+                            <span class="travel-calc-result" id="travel-res-jpy">10,000 JPY = 86,120 원</span>
+                            <input type="number" class="travel-calc-input" id="travel-input-jpy" value="10000"
+                                oninput="calculateTravelExchange('jpy')">
+                        </div>
+                    </div>
+
+                    <!-- 유로화 -->
+                    <div class="travel-card" id="travel-card-eur">
+                        <div class="travel-meta">
+                            <div>
+                                <span class="curr-emoji">🇪🇺</span>
+                                <span class="curr-code" style="margin-left: 8px;">유럽 유로화 (EUR)</span>
+                                <span class="travel-destinations">추천 여행지: 프랑스, 이탈리아, 스페인</span>
+                            </div>
+                            <span class="curr-change bearish-color" id="travel-chg-eur">-0.17%</span>
+                        </div>
+                        <div class="travel-rate-section">
+                            <div class="travel-rate-box">
+                                <span class="travel-rate-label" id="travel-rate-lbl-eur">현재 환율 (1유로 기준)</span>
+                                <span class="travel-rate-val" id="travel-rate-val-eur">1,462.60 KRW</span>
+                            </div>
+                            <span class="travel-usd-basis-val" id="travel-usd-basis-eur">1 EUR = 1.08 USD</span>
+                        </div>
+                        <div class="travel-calc-box">
+                            <span class="travel-calc-result" id="travel-res-eur">100 EUR = 146,260 원</span>
+                            <input type="number" class="travel-calc-input" id="travel-input-eur" value="100"
+                                oninput="calculateTravelExchange('eur')">
+                        </div>
+                    </div>
+
+                    <!-- 중국 위안화 -->
+                    <div class="travel-card" id="travel-card-cny">
+                        <div class="travel-meta">
+                            <div>
+                                <span class="curr-emoji">🇨🇳</span>
+                                <span class="curr-code" style="margin-left: 8px;">중국 위안화 (CNY)</span>
+                                <span class="travel-destinations">추천 여행지: 상하이, 베이징, 장자제</span>
+                            </div>
+                            <span class="curr-change bullish-color" id="travel-chg-cny">+0.21%</span>
+                        </div>
+                        <div class="travel-rate-section">
+                            <div class="travel-rate-box">
+                                <span class="travel-rate-label" id="travel-rate-lbl-cny">현재 환율 (1위안 기준)</span>
+                                <span class="travel-rate-val" id="travel-rate-val-cny">186.50 KRW</span>
+                            </div>
+                            <span class="travel-usd-basis-val" id="travel-usd-basis-cny">1 USD = 7.248 CNY</span>
+                        </div>
+                        <div class="travel-calc-box">
+                            <span class="travel-calc-result" id="travel-res-cny">1,000 CNY = 186,500 원</span>
+                            <input type="number" class="travel-calc-input" id="travel-input-cny" value="1000"
+                                oninput="calculateTravelExchange('cny')">
+                        </div>
+                    </div>
+
+                    <!-- 베트남 동 -->
+                    <div class="travel-card" id="travel-card-vnd">
+                        <div class="travel-meta">
+                            <div>
+                                <span class="curr-emoji">🇻🇳</span>
+                                <span class="curr-code" style="margin-left: 8px;">베트남 동 (VND)</span>
+                                <span class="travel-destinations">추천 여행지: 다낭, 나트랑, 하노이</span>
+                            </div>
+                            <span class="curr-change bullish-color" id="travel-chg-vnd">+0.19%</span>
+                        </div>
+                        <div class="travel-rate-section">
+                            <div class="travel-rate-box">
+                                <span class="travel-rate-label" id="travel-rate-lbl-vnd">현재 환율 (100동 기준)</span>
+                                <span class="travel-rate-val" id="travel-rate-val-vnd">5.31 KRW</span>
+                            </div>
+                            <span class="travel-usd-basis-val" id="travel-usd-basis-vnd">1 USD = 25,450 VND</span>
+                        </div>
+                        <div class="travel-calc-box">
+                            <span class="travel-calc-result" id="travel-res-vnd">100,000 VND = 5,310 원</span>
+                            <input type="number" class="travel-calc-input" id="travel-input-vnd" value="100000"
+                                oninput="calculateTravelExchange('vnd')">
+                        </div>
+                    </div>
+
+                    <!-- 태국 바트 -->
+                    <div class="travel-card" id="travel-card-thb">
+                        <div class="travel-meta">
+                            <div>
+                                <span class="curr-emoji">🇹🇭</span>
+                                <span class="curr-code" style="margin-left: 8px;">태국 바트 (THB)</span>
+                                <span class="travel-destinations">추천 여행지: 방콕, 푸켓, 치앙마이</span>
+                            </div>
+                            <span class="curr-change bullish-color" id="travel-chg-thb">+0.35%</span>
+                        </div>
+                        <div class="travel-rate-section">
+                            <div class="travel-rate-box">
+                                <span class="travel-rate-label" id="travel-rate-lbl-thb">현재 환율 (1바트 기준)</span>
+                                <span class="travel-rate-val" id="travel-rate-val-thb">36.85 KRW</span>
+                            </div>
+                            <span class="travel-usd-basis-val" id="travel-usd-basis-thb">1 USD = 36.85 THB</span>
+                        </div>
+                        <div class="travel-calc-box">
+                            <span class="travel-calc-result" id="travel-res-thb">1,000 THB = 36,850 원</span>
+                            <input type="number" class="travel-calc-input" id="travel-input-thb" value="1000"
+                                oninput="calculateTravelExchange('thb')">
+                        </div>
+                    </div>
+
+                    <!-- 대만 달러 -->
+                    <div class="travel-card" id="travel-card-twd">
+                        <div class="travel-meta">
+                            <div>
+                                <span class="curr-emoji">🇹🇼</span>
+                                <span class="curr-code" style="margin-left: 8px;">대만 달러 (TWD)</span>
+                                <span class="travel-destinations">추천 여행지: 타이베이, 가오슝</span>
+                            </div>
+                            <span class="curr-change bullish-color" id="travel-chg-twd">+0.17%</span>
+                        </div>
+                        <div class="travel-rate-section">
+                            <div class="travel-rate-box">
+                                <span class="travel-rate-label" id="travel-rate-lbl-twd">현재 환율 (1달러 기준)</span>
+                                <span class="travel-rate-val" id="travel-rate-val-twd">41.92 KRW</span>
+                            </div>
+                            <span class="travel-usd-basis-val" id="travel-usd-basis-twd">1 USD = 32.25 TWD</span>
+                        </div>
+                        <div class="travel-calc-box">
+                            <span class="travel-calc-result" id="travel-res-twd">1,000 TWD = 41,920 원</span>
+                            <input type="number" class="travel-calc-input" id="travel-input-twd" value="1000"
+                                oninput="calculateTravelExchange('twd')">
+                        </div>
+                    </div>
+
+                    <!-- 싱가포르 달러 -->
+                    <div class="travel-card" id="travel-card-sgd">
+                        <div class="travel-meta">
+                            <div>
+                                <span class="curr-emoji">🇸🇬</span>
+                                <span class="curr-code" style="margin-left: 8px;">싱가포르 달러 (SGD)</span>
+                                <span class="travel-destinations">추천 여행지: 싱가포르 센토사</span>
+                            </div>
+                            <span class="curr-change bullish-color" id="travel-chg-sgd">+0.33%</span>
+                        </div>
+                        <div class="travel-rate-section">
+                            <div class="travel-rate-box">
+                                <span class="travel-rate-label" id="travel-rate-lbl-sgd">현재 환율 (1달러 기준)</span>
+                                <span class="travel-rate-val" id="travel-rate-val-sgd">1,002.80 KRW</span>
+                            </div>
+                            <span class="travel-usd-basis-val" id="travel-usd-basis-sgd">1 USD = 1.35 SGD</span>
+                        </div>
+                        <div class="travel-calc-box">
+                            <span class="travel-calc-result" id="travel-res-sgd">100 SGD = 100,280 원</span>
+                            <input type="number" class="travel-calc-input" id="travel-input-sgd" value="100"
+                                oninput="calculateTravelExchange('sgd')">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- [VIEW 4] 시장 심리 탭 -->
+        <section class="tab-view" id="view-sentiment">
+            <div class="sentiment-container">
+                <!-- 큰 공포 탐욕 게이지 (클릭 시 CNN 오리지널 사이트 이동) -->
+                <a href="https://edition.cnn.com/markets/fear-and-greed" target="_blank"
+                    style="text-decoration: none; color: inherit; display: block;">
+                    <div class="sentiment-card sentiment-card-interactive" id="sentiment-card-meter"
+                        style="cursor: pointer; position: relative;">
+                        <div
+                            style="position: absolute; top: 20px; right: 24px; color: var(--text-muted); font-size: 11px; display: flex; align-items: center; gap: 4px;">
+                            <span>CNN 오리지널 사이트</span>
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                                <polyline points="15 3 21 3 21 9"></polyline>
+                                <line x1="10" y1="14" x2="21" y2="3"></line>
+                            </svg>
+                        </div>
+                        <h3 class="section-title" style="margin-bottom: 20px;">Fear & Greed Index</h3>
+                        <div class="fear-greed-large-meter">
+                            <svg viewBox="0 0 240 160"
+                                style="width: 100%; height: auto; max-width: 440px; display: block; margin: 0 auto;">
+                                <defs>
+                                    <!-- 텍스트 배치를 둥글게 가이드해 줄 반원 곡선 패스 -->
+                                    <path id="fg-text-arc-path" d="M 12,120 A 108,108 0 0,1 228,120" fill="none" />
+                                </defs>
+
+                                <!-- Outer and Inner Bounding Guides for Semicircle Definition -->
+                                <path d="M 9,120 A 111,111 0 0,1 231,120" fill="none" stroke="rgba(255, 255, 255, 0.15)"
+                                    stroke-width="1" />
+                                <path d="M 31,120 A 89,89 0 0,1 209,120" fill="none" stroke="rgba(255, 255, 255, 0.15)"
+                                    stroke-width="1" />
+
+                                <!-- 100 Ticks representing 0-100 gauge scale (Generated dynamically via JS for ultra-smooth rendering) -->
+                                <g id="fg-gauge-ticks"></g>
+
+                                <!-- Category Text Labels curved along the outer arc to harmonize perfectly with the circular gauge -->
+                                <text font-family="var(--font-heading)" font-size="6.2" font-weight="800" fill="var(--text-secondary)" style="letter-spacing: 0.08em;">
+                                    <textPath href="#fg-text-arc-path" startOffset="10%" text-anchor="middle">EXTREME FEAR</textPath>
+                                </text>
+                                <text font-family="var(--font-heading)" font-size="6.2" font-weight="800" fill="var(--text-secondary)" style="letter-spacing: 0.08em;">
+                                    <textPath href="#fg-text-arc-path" startOffset="30%" text-anchor="middle">FEAR</textPath>
+                                </text>
+                                <text font-family="var(--font-heading)" font-size="6.2" font-weight="800" fill="var(--text-secondary)" style="letter-spacing: 0.08em;">
+                                    <textPath href="#fg-text-arc-path" startOffset="50%" text-anchor="middle">NEUTRAL</textPath>
+                                </text>
+                                <text font-family="var(--font-heading)" font-size="6.2" font-weight="800" fill="var(--text-secondary)" style="letter-spacing: 0.08em;">
+                                    <textPath href="#fg-text-arc-path" startOffset="70%" text-anchor="middle">GREED</textPath>
+                                </text>
+                                <text font-family="var(--font-heading)" font-size="6.2" font-weight="800" fill="var(--text-secondary)" style="letter-spacing: 0.08em;">
+                                    <textPath href="#fg-text-arc-path" startOffset="90%" text-anchor="middle">EXTREME GREED</textPath>
+                                </text>
+
+                                <!-- Dotted Scale Track -->
+                                <path d="M 45,120 A 75,75 0 0,1 195,120" fill="none" stroke="var(--text-muted)"
+                                    stroke-width="1.5" stroke-dasharray="2,4" opacity="0.6" />
+
+                                <!-- Scale Labels -->
+                                <text x="45" y="136" font-size="9" font-weight="700" fill="var(--text-muted)"
+                                    text-anchor="middle">0</text>
+                                <text x="72" y="82" font-size="9" font-weight="700" fill="var(--text-muted)"
+                                    text-anchor="middle">25</text>
+                                <text x="120" y="66" font-size="9" font-weight="700" fill="var(--text-muted)"
+                                    text-anchor="middle">50</text>
+                                <text x="168" y="82" font-size="9" font-weight="700" fill="var(--text-muted)"
+                                    text-anchor="middle">75</text>
+                                <text x="195" y="136" font-size="9" font-weight="700" fill="var(--text-muted)"
+                                    text-anchor="middle">100</text>
+
+                                <!-- Center Hub -->
+                                <circle cx="120" cy="120" r="40" fill="rgba(15, 23, 42, 0.4)" stroke="rgba(255, 255, 255, 0.08)" stroke-width="1.5" />
+                                <circle cx="120" cy="120" r="30" fill="rgba(0, 0, 0, 0.2)" stroke="rgba(255, 255, 255, 0.04)" stroke-width="1" />
+
+                                <!-- Score and Category Label inside/below the hub -->
+                                <text x="120" y="112" font-family="var(--font-heading)" font-size="26" font-weight="800"
+                                    fill="var(--text-primary)" text-anchor="middle" id="large-meter-val" filter="drop-shadow(0 2px 4px rgba(0,0,0,0.5))">68</text>
+                                <text x="120" y="145" font-size="9" font-weight="800" fill="var(--text-secondary)"
+                                    text-anchor="middle" id="large-meter-lbl" letter-spacing="0.5">GREED (탐욕)</text>
+
+                                <!-- Tapered Sharp Needle pointing to scale -->
+                                <g id="large-meter-needle" transform="rotate(-30, 120, 120)">
+                                    <!-- (120, 120) 기준 절대좌표로 바늘 침 형성 (y=120에서 시작하여 y=28까지 뻗는 구조) -->
+                                    <path d="M 116.5 120 L 123.5 120 L 120.6 28 L 119.4 28 Z" fill="#ff4757" />
+                                    <!-- Needle Center Pivot Cap (바늘 정중앙 결합부 축 형성) -->
+                                    <circle cx="120" cy="120" r="7" fill="#ff4757" />
+                                    <circle cx="120" cy="120" r="3" fill="#0f172a" />
+                                </g>
+                            </svg>
+                        </div>
+                    </div>
+                </a>
+
+                <!-- Fear & Greed Index 해설 및 가이드 -->
+                <div class="sentiment-card" id="sentiment-card-commentary">
+                    <h3 class="section-title" style="margin-bottom: 12px;">지표 해설 및 투자 참고 가이드</h3>
+                    <p class="historical-description">시장의 감정을 측정하여 군중 심리의 과열과 공포를 파악하는 지표에 대한 공식 가이드입니다.</p>
+
+                    <div class="insights-list" id="insights-list">
+                        <!-- 항목 1 -->
+                        <div class="insight-item success">
+                            <div class="insight-header-row">
+                                <span>투자 격언</span>
+                                <span>워런 버핏의 역발상 투자론</span>
+                            </div>
+                            <h4 class="insight-title">Fear & Greed Index란 무엇인가요?</h4>
+                            <p class="insight-desc">CNN Business에서 제공하는 시장 심리 측정계입니다. 0(극단적 공포)에서 100(극단적 탐욕) 사이의 수치를 통해
+                                투자자가 시장을 지배하는 주된 감정을 파악하고, 과매도 구간(기회) 또는 과매수 구간(리스크 관리)을 판별하는 용도로 사용됩니다.</p>
+                        </div>
+                        <!-- 항목 2 -->
+                        <div class="insight-item warning">
+                            <div class="insight-header-row">
+                                <span>심리 단계 안내</span>
+                                <span>5가지 밴드 모델 기준</span>
+                            </div>
+                            <h4 class="insight-title">수치 구간별 심리 상태 해석</h4>
+                            <p class="insight-desc">
+                                • <strong>0 ~ 25 (Extreme Fear)</strong>: 극단적 공포. 패닉 셀링으로 주가가 과도하게 저평가되는 역발상 매수 적기.<br>
+                                • <strong>26 ~ 45 (Fear)</strong> / <strong>46 ~ 55 (Neutral)</strong>: 약세장 우려 및 눈치보기
+                                장세.<br>
+                                • <strong>56 ~ 74 (Greed)</strong>: 매수세 과열. 추가 상승 흐름 또는 점진적 매도 준비 구간.<br>
+                                • <strong>75 ~ 100 (Extreme Greed)</strong>: 극단적 탐욕. 소외 불안(FOMO) 과열 상태로 단기 버블 고점 리스크 주의.
+                            </p>
+                        </div>
+                        <!-- 항목 3 -->
+                        <div class="insight-item">
+                            <div class="insight-header-row">
+                                <span>산출 기준</span>
+                                <span>7대 핵심 마켓 시그널</span>
+                            </div>
+                            <h4 class="insight-title">지표를 결정하는 7가지 요인</h4>
+                            <p class="insight-desc">지표는 단일 수치가 아닌 <strong>주가 모멘텀</strong>(S&P500의 125일 이격), <strong>주가
+                                    강도</strong>(52주 신고가/신저가), <strong>주가 폭</strong>(상승/하락 거래량), <strong>풋/콜 비율</strong>,
+                                <strong>정크본드 수요</strong>(스프레드), <strong>시장 변동성(VIX)</strong>, <strong>안전 자산
+                                    수요</strong>(주식 vs 국채 수익률)의 7가지 팩터를 고르게 가중 평균하여 산출됩니다.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 네이버 실시간 주요 뉴스 섹션 -->
+                <div class="sentiment-card naver-news-section" style="grid-column: span 2;">
+                    <div class="naver-news-header"
+                        style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 12px; flex-wrap: wrap; gap: 12px;">
+                        <h3 class="section-title" style="margin-bottom: 0;">네이버 증권 실시간 주요 뉴스</h3>
+                        <span id="naver-news-time" class="update-indicator"
+                            style="font-size: 11px; color: var(--text-muted);">뉴스 동기화 중...</span>
+                    </div>
+                    <!-- 뉴스 세분화 탭 인터페이스 -->
+                    <div class="naver-news-tabs" style="display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap;">
+                        <button class="news-tab-btn active" onclick="switchNewsTab('stock')" id="news-tab-stock">📈 국내외 증시</button>
+                        <button class="news-tab-btn" onclick="switchNewsTab('forex')" id="news-tab-forex">💵 국내외 외환</button>
+                        <button class="news-tab-btn" onclick="switchNewsTab('economy')" id="news-tab-economy">🌐 글로벌 경제 & 공시</button>
+                    </div>
+                    <div class="naver-news-container" id="naver-news-list">
+                        <!-- 실시간으로 동적으로 바인딩됨 -->
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- [VIEW 5] 종목 상세 분석 탭 -->
+        <section class="tab-view" id="view-detail">
+            <div class="ticker-detail-container">
+                <div class="ticker-detail-header" id="ticker-detail-header">
+                    <div class="ticker-header-left">
+                        <h2 class="section-title" id="detail-title" style="margin-bottom: 8px;">종목을 검색해주세요</h2>
+                        <span class="crisis-year-badge" id="detail-exchange"
+                            style="display: inline-block;">Exchange</span>
+                    </div>
+                    <div class="ticker-header-right" id="detail-price-box" style="display: none; text-align: right;">
+                        <span class="ticker-price-huge" id="detail-price"
+                            style="font-family: var(--font-heading); font-size: 32px; font-weight: 800; display: block; margin-bottom: 4px;">0.00</span>
+                        <span class="index-change-badge" id="detail-change"
+                            style="font-size: 15px; display: inline-flex;">0.00 (0.00%)</span>
+                        <div id="detail-consensus-box"
+                            style="margin-top: 8px; font-size: 13px; color: var(--text-secondary); display: none;">
+                            컨센서스: <strong id="consensus-rating" style="color: var(--accent);">N/A</strong> &nbsp;|&nbsp;
+                            목표가: <strong id="consensus-target">N/A</strong>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 기간 및 모드 선택 버튼 (종목 상세) -->
+                <div class="timeframe-buttons-container">
+                    <div class="chart-mode-toggle" id="detail-mode-toggle">
+                        <button class="mode-btn active" data-mode="line">📈 라인</button>
+                        <button class="mode-btn" data-mode="candlestick">🕯️ 캔들</button>
+                    </div>
+                    <div class="timeframe-buttons" id="detail-timeframe-buttons">
+                        <button class="time-btn active" data-period="5y">5년</button>
+                        <button class="time-btn" data-period="3y">3년</button>
+                        <button class="time-btn" data-period="1y">1년</button>
+                        <button class="time-btn" data-period="6mo">6개월</button>
+                        <button class="time-btn" data-period="3mo">3개월</button>
+                        <button class="time-btn" data-period="1mo">1개월</button>
+                        <button class="time-btn" data-period="1wk">1주일</button>
+                        <button class="time-btn" data-period="1d">1일</button>
+                        <button class="time-btn" data-period="1h">1시간</button>
+                    </div>
+                </div>
+
+                <!-- 대형 차트 영역 및 펀더멘털 패널 (그리드 레이아웃) -->
+                <div class="detail-main-layout"
+                    style="display: none;"
+                    id="detail-main-layout">
+                    <!-- 좌측: 차트 -->
+                    <div style="display: flex; flex-direction: column; width: 100%; position: relative;">
+                        <!-- 메인 캔들 차트 영역 -->
+                        <div class="big-chart-wrapper" id="detail-chart-wrapper"
+                            style="position: relative; height: 350px; width: 100%; margin-bottom: 8px;">
+                            <canvas id="chart-ticker-detail"></canvas>
+                        </div>
+
+                        <!-- 보조 지표 (거래량 및 가상 주체별 수급) 분리 영역 -->
+                        <div class="detail-volume-wrapper" style="position: relative; height: 120px; width: 100%;">
+                            <canvas id="chart-detail-volume"></canvas>
+                        </div>
+
+                        <!-- 로딩 오버레이 -->
+                        <div id="detail-loading-overlay" class="chart-loading-overlay"
+                            style="display: none; position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(10, 15, 30, 0.85); z-index: 10; flex-direction: column; align-items: center; justify-content: center; border-radius: 12px; backdrop-filter: blur(4px);">
+                            <style>
+                                @keyframes spinLoading {
+                                    0% {
+                                        transform: rotate(0deg);
+                                    }
+
+                                    100% {
+                                        transform: rotate(360deg);
+                                    }
+                                }
+                            </style>
+                            <div
+                                style="width: 48px; height: 48px; border: 4px solid rgba(255,255,255,0.1); border-top: 4px solid #6366f1; border-radius: 50%; animation: spinLoading 1s linear infinite; margin-bottom: 16px;">
+                            </div>
+                            <div style="font-size: 16px; font-weight: 600; margin-bottom: 8px;">실시간 주가 데이터 분석 중... ⏱️
+                            </div>
+                            <div style="font-size: 14px; color: var(--text-muted);">남은 예상 시간: <span
+                                    id="loading-countdown"
+                                    style="color: #f43f5e; font-weight: bold; font-size: 18px;">1.50</span>초</div>
+                        </div>
+
+                        <!-- 캔들 설명 텍스트 -->
+                        <div id="detail-candle-desc" class="candle-desc-tooltip"
+                            style="opacity: 0; bottom: -30px; position: absolute; left: 50%; transform: translateX(-50%);">
+                            💡 <span style="color:#e2e8f0;"><strong>O</strong>: 시가(Open)</span> &nbsp;|&nbsp; <span style="color:#f43f5e;"><strong>H</strong>: 고가(High)</span> &nbsp;|&nbsp;
+                            <span style="color:#3b82f6;"><strong>L</strong>: 저가(Low)</span> &nbsp;|&nbsp; <span style="color:#10b981;"><strong>C</strong>: 종가(Close)</span>
+                        </div>
+                    </div>
+
+                    <!-- 우측: 펀더멘털 및 컨센서스 패널 -->
+                    <div class="detail-side-panel" id="detail-side-panel">
+                        <div class="side-panel-card"
+                            style="background: rgba(13, 20, 38, 0.6); border: 1px solid rgba(255,255,255,0.05); border-radius: 12px; padding: 20px; height: 100%; box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.08);">
+                            <h3 class="panel-title"
+                                style="margin-top: 0; margin-bottom: 16px; font-size: 15px; color: var(--text-primary); display: flex; align-items: center; gap: 6px;">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                    stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M21.21 15.89A10 10 0 1 1 8 2.83"></path>
+                                    <path d="M22 12A10 10 0 0 0 12 2v10z"></path>
+                                </svg>
+                                컨센서스 및 지표
+                            </h3>
+                            <div id="panel-consensus-source" style="font-size: 11px; color: var(--text-muted); margin-bottom: 12px; margin-top: -8px;">출처: 데이터 로딩 중...</div>
+
+                            <div class="consensus-gauge-container"
+                                style="margin-bottom: 24px; background: rgba(0,0,0,0.2); padding: 16px; border-radius: 8px;">
+                                <div class="consensus-label"
+                                    style="font-size: 12px; color: var(--text-secondary); margin-bottom: 4px;">월가 목표가
+                                </div>
+                                <div class="consensus-target-price" id="panel-target-price"
+                                    style="font-size: 20px; font-weight: 800; font-family: var(--font-heading); color: var(--accent); margin-bottom: 12px;">
+                                    N/A</div>
+
+                                <div class="consensus-rating-bar"
+                                    style="height: 8px; border-radius: 4px; background: linear-gradient(to right, #f43f5e 0%, #fb7185 25%, #94a3b8 50%, #34d399 75%, #10b981 100%); position: relative; margin-bottom: 8px;">
+                                    <div class="rating-marker" id="panel-rating-marker"
+                                        style="position: absolute; top: -4px; left: 50%; width: 4px; height: 16px; background: #fff; border-radius: 2px; box-shadow: 0 0 4px rgba(0,0,0,0.5); transform: translateX(-50%); transition: left 0.5s ease;">
+                                    </div>
+                                </div>
+                                <div class="rating-labels"
+                                    style="display: flex; justify-content: space-between; font-size: 10px; color: var(--text-muted);">
+                                    <span>매도</span><span>중립</span><span>매수</span>
+                                </div>
+                            </div>
+
+                            <hr class="panel-divider"
+                                style="border: 0; height: 1px; background: rgba(255,255,255,0.05); margin: 0 0 16px 0;">
+
+                            <h4 class="panel-subtitle"
+                                style="margin-top: 0; margin-bottom: 12px; font-size: 13px; color: var(--text-secondary);">
+                                주요 펀더멘털</h4>
+                            <table class="fundamentals-table"
+                                style="width: 100%; font-size: 13px; border-collapse: separate; border-spacing: 0 8px;">
+                                <tr>
+                                    <td style="color: var(--text-secondary);">거래량</td>
+                                    <td id="panel-volume"
+                                        style="text-align: right; font-weight: 600; font-family: var(--font-heading);">0
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td style="color: var(--text-secondary);">시가총액</td>
+                                    <td id="panel-mktcap"
+                                        style="text-align: right; font-weight: 600; font-family: var(--font-heading);">
+                                        N/A</td>
+                                </tr>
+                                <tr>
+                                    <td style="color: var(--text-secondary);">PER</td>
+                                    <td id="panel-per"
+                                        style="text-align: right; font-weight: 600; font-family: var(--font-heading);">
+                                        N/A</td>
+                                </tr>
+                                <tr>
+                                    <td style="color: var(--text-secondary);">EPS</td>
+                                    <td id="panel-eps"
+                                        style="text-align: right; font-weight: 600; font-family: var(--font-heading);">
+                                        N/A</td>
+                                </tr>
+                                <tr>
+                                    <td style="color: var(--text-secondary);">배당수익률</td>
+                                    <td id="panel-div"
+                                        style="text-align: right; font-weight: 600; font-family: var(--font-heading);">
+                                        N/A</td>
+                                </tr>
+                                <tr>
+                                    <td style="color: var(--text-secondary);">52주 최고</td>
+                                    <td id="panel-52high" class="color-red"
+                                        style="text-align: right; font-weight: 600; font-family: var(--font-heading);">
+                                        N/A</td>
+                                </tr>
+                                <tr>
+                                    <td style="color: var(--text-secondary);">52주 최저</td>
+                                    <td id="panel-52low" class="color-blue"
+                                        style="text-align: right; font-weight: 600; font-family: var(--font-heading);">
+                                        N/A</td>
+                                </tr>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                <!-- 최하단 재무제표 표시 컨테이너 -->
+                <div id="financial-statements-container" style="margin-top: 24px; display: none;">
+                    <div class="side-panel-card"
+                        style="background: rgba(13, 20, 38, 0.6); border: 1px solid rgba(255,255,255,0.05); border-radius: 12px; padding: 20px; box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.08);">
+                        <h3
+                            style="color: var(--text-color); margin-top: 0; margin-bottom: 16px; font-size: 15px; border-left: 3px solid var(--accent); padding-left: 8px;">
+                            연간 주요 재무 실적 (단위: 천)</h3>
+                        <div id="financial-table-wrapper" style="overflow-x: auto;">
+                            <!-- JS로 동적 테이블 삽입 -->
+                        </div>
+                    </div>
+                </div>
+        </section>
+        </main>
+
+        <footer>
+            <p>© 2026 Konan J 주식 환율 알리미 / 체인소맨 금융정보서비스. Real-time and historical financial API data synced.</p>
+            <p style="margin-top: 6px;">Designed beautifully and animated with glassmorphic elements.</p>
+        </footer>
+    </div>
+
+    <!-- 스크립트 연결 -->
+    <script src="historical-data.js"></script>
+    <script src="mock-data.js"></script>
+    <script src="app.js"></script>
+</body>
+
+</html>
