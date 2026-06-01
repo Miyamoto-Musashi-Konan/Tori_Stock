@@ -180,6 +180,7 @@ header {
 /* 상단 정보 바 */
 .market-status-bar {
     display: flex;
+    justify-content: center;
     gap: 16px;
     flex-wrap: wrap;
     margin-bottom: 30px;
@@ -1100,15 +1101,9 @@ header {
 /* 투자 심리 탭 레이아웃 */
 .sentiment-container {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr;
     gap: 24px;
     margin-bottom: 40px;
-}
-
-@media (max-width: 768px) {
-    .sentiment-container {
-        grid-template-columns: 1fr;
-    }
 }
 
 .sentiment-container > a {
@@ -1622,11 +1617,116 @@ footer a:hover {
         justify-content: center !important;
     }
 
+    /* ── 차트 분석 화면 가로 스크롤 방지 ── */
+    #view-detail {
+        overflow-x: hidden !important;
+        max-width: 100vw !important;
+    }
+
+    .ticker-detail-container {
+        overflow-x: hidden !important;
+        padding: 18px !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+    }
+
     .detail-main-layout {
         grid-template-columns: 1fr !important;
         gap: 16px !important;
+        overflow-x: hidden !important;
+        max-width: 100% !important;
     }
-    
+
+    .detail-side-panel {
+        width: 100% !important;
+        max-width: 100% !important;
+        min-width: 0 !important;
+        overflow-x: hidden !important;
+    }
+
+    .detail-side-panel .side-panel-card {
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+        overflow-x: hidden !important;
+    }
+
+    /* 컨센서스 게이지 컨테이너 */
+    .consensus-gauge-container {
+        max-width: 100% !important;
+        overflow-x: hidden !important;
+    }
+
+    /* rating-labels 줄바꿈 방지 */
+    .rating-labels {
+        font-size: 9px !important;
+    }
+
+    /* 펀더멘털 테이블 - 화면 내에서 크기 제한 */
+    .fundamentals-table {
+        table-layout: fixed !important;
+        width: 100% !important;
+        font-size: 12px !important;
+    }
+    .fundamentals-table td:first-child {
+        word-break: keep-all;
+        max-width: 50%;
+    }
+    .fundamentals-table td:last-child {
+        word-break: break-all;
+        max-width: 50%;
+        font-size: 11px !important;
+    }
+
+    /* 재무 테이블 래퍼 */
+    #financial-table-wrapper {
+        overflow-x: auto !important;
+        -webkit-overflow-scrolling: touch !important;
+        max-width: 100% !important;
+    }
+
+    /* 헤더 우측 가격박스 */
+    #detail-price-box {
+        max-width: 100% !important;
+        word-break: break-all !important;
+    }
+
+    #detail-consensus-box {
+        font-size: 11px !important;
+        flex-wrap: wrap !important;
+        word-break: break-word !important;
+    }
+
+    /* 포트폴리오 담기 버튼과 제목 줄바꿈 */
+    .ticker-header-left {
+        max-width: 100% !important;
+        overflow: hidden !important;
+    }
+
+    .ticker-header-left > div:first-child {
+        flex-wrap: wrap !important;
+        gap: 8px !important;
+    }
+
+    /* 캔들 설명 텍스트 줄바꿈 */
+    #detail-candle-desc {
+        font-size: 11px !important;
+        word-break: keep-all !important;
+        white-space: normal !important;
+    }
+
+    /* 뉴스 컨테이너 */
+    #detail-news-container {
+        max-width: 100% !important;
+        overflow-x: hidden !important;
+    }
+
+    /* 재무제표 컨테이너 */
+    #financial-statements-container {
+        max-width: 100% !important;
+        overflow-x: hidden !important;
+    }
+
     .timeframe-buttons-container {
         flex-direction: column !important;
         align-items: stretch !important;
@@ -1760,6 +1860,9 @@ footer a:hover {
     padding: 12px 20px !important;
     position: relative;
     overflow: hidden;
+    max-width: 360px;
+    width: 100%;
+    margin: 0 auto;
 }
 
 .porsche-gauge-card::before {
@@ -1823,4 +1926,665 @@ footer a:hover {
     color: #f8fafc;
     margin-top: 4px;
     box-shadow: inset 0 1px 1px rgba(255,255,255,0.2);
+}
+
+/* === Portfolio Features Styles === */
+.portfolio-action-btn {
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-hover) 100%);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: var(--text-primary);
+    padding: 10px 16px;
+    border-radius: 10px;
+    cursor: pointer;
+    font-family: var(--font-body);
+    font-size: 13px;
+    font-weight: 600;
+    transition: all 0.25s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    box-shadow: 0 4px 12px var(--primary-glow);
+}
+
+.portfolio-action-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px var(--primary-glow), 0 0 8px var(--accent-glow);
+    border-color: rgba(255, 255, 255, 0.2);
+}
+
+/* Modal Overlay & Content */
+.modal-overlay {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(8, 11, 22, 0.8);
+    backdrop-filter: blur(15px);
+    z-index: 99999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+}
+
+.modal-overlay.active {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.portfolio-modal-container {
+    background: rgba(15, 23, 42, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 20px;
+    width: 90%;
+    max-width: 800px;
+    max-height: 85vh;
+    overflow-y: auto;
+    padding: 30px;
+    box-shadow: 0 25px 50px rgba(0, 0, 0, 0.6), 0 0 30px rgba(99, 102, 241, 0.15);
+    transform: scale(0.9);
+    transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.modal-overlay.active .portfolio-modal-container {
+    transform: scale(1);
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    padding-bottom: 16px;
+    margin-bottom: 20px;
+}
+
+.modal-title {
+    font-family: var(--font-heading);
+    font-size: 20px;
+    font-weight: 700;
+    background: linear-gradient(to right, #fff, var(--accent));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.close-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 24px;
+    cursor: pointer;
+    transition: color 0.2s;
+}
+
+.close-btn:hover {
+    color: var(--bearish);
+}
+
+/* Portfolio Item List */
+.portfolio-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 24px;
+    max-height: 250px;
+    overflow-y: auto;
+    padding-right: 6px;
+}
+
+.portfolio-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    padding: 14px 18px;
+    border-radius: 12px;
+    transition: all 0.2s ease;
+}
+
+.portfolio-item:hover {
+    background: rgba(255, 255, 255, 0.04);
+    border-color: rgba(255, 255, 255, 0.12);
+}
+
+.portfolio-item-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.portfolio-item-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.portfolio-item-sub {
+    font-size: 11px;
+    color: var(--text-secondary);
+}
+
+.portfolio-item-controls {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.portfolio-item-price {
+    font-family: var(--font-heading);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--accent);
+    text-align: right;
+    min-width: 140px;
+}
+
+.portfolio-qty-input {
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: var(--text-primary);
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-family: var(--font-heading);
+    font-size: 13px;
+    width: 80px;
+    text-align: right;
+    outline: none;
+}
+
+.portfolio-qty-input:focus {
+    border-color: var(--accent);
+}
+
+.portfolio-delete-btn {
+    background: rgba(244, 63, 94, 0.1);
+    border: 1px solid rgba(244, 63, 94, 0.2);
+    color: var(--bearish);
+    border-radius: 8px;
+    padding: 6px 10px;
+    cursor: pointer;
+    font-size: 12px;
+    transition: all 0.2s ease;
+}
+
+.portfolio-delete-btn:hover {
+    background: var(--bearish);
+    color: var(--text-primary);
+    box-shadow: 0 0 10px var(--bearish-glow);
+}
+
+/* Modal Footer & Backtest */
+.modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    padding-top: 16px;
+}
+
+.analysis-section {
+    margin-top: 24px;
+    border-top: 1px dashed rgba(255, 255, 255, 0.1);
+    padding-top: 20px;
+    display: none;
+}
+
+.analysis-section.active {
+    display: block;
+}
+
+.backtest-chart-container {
+    height: 250px;
+    position: relative;
+    margin-top: 16px;
+}
+
+/* ==========================================================================
+   Tori Stock Premium Visual & Mobile Optimization
+   ========================================================================== */
+
+/* Notion-style Cover Banner */
+.logo-cover-banner {
+    width: 100%;
+    height: 220px;
+    overflow: hidden;
+    background: #080b16;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+.cover-banner-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center;
+}
+
+/* Vertical Stacking Header */
+.vertical-header {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    padding-top: 24px;
+    padding-bottom: 12px;
+}
+.title-section h1 {
+    font-family: var(--font-heading);
+    font-size: 26px;
+    font-weight: 800;
+    background: linear-gradient(to right, #ffffff, #cbd5e1);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-bottom: 4px;
+}
+.title-section .subtitle {
+    font-size: 11px;
+    color: var(--text-muted);
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    display: block;
+}
+
+/* Independent Glassmorphic Status Box */
+.status-summary-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    padding: 12px 20px;
+    background: rgba(13, 20, 38, 0.45);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 14px;
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    margin-top: 10px;
+    margin-bottom: 25px;
+    gap: 16px;
+    box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.08), 0 8px 24px rgba(0, 0, 0, 0.2);
+}
+.status-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12.5px;
+    color: var(--text-secondary);
+}
+
+/* iOS Glassmorphic Squircle Navigation Grid */
+.glass-navigation-grid {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 16px;
+    margin-bottom: 16px;
+    width: 100%;
+}
+.glass-nav-card {
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: 22px;
+    aspect-ratio: 1.25 / 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+    transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+    box-shadow: 
+        0 10px 25px rgba(0, 0, 0, 0.35),
+        inset 0 1px 1px rgba(255, 255, 255, 0.15),
+        inset 0 -1px 1px rgba(0, 0, 0, 0.2);
+    backdrop-filter: blur(25px);
+    -webkit-backdrop-filter: blur(25px);
+    padding: 12px;
+    text-align: center;
+}
+.glass-nav-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 50%;
+    background: linear-gradient(to bottom, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0) 100%);
+    pointer-events: none;
+}
+.glass-nav-card .nav-icon {
+    font-size: 26px;
+    margin-bottom: 8px;
+    filter: drop-shadow(0 4px 6px rgba(0,0,0,0.3));
+    transition: transform 0.3s ease;
+}
+.glass-nav-card .nav-label-main {
+    font-family: var(--font-heading);
+    font-size: 13.5px;
+    font-weight: 700;
+    color: var(--text-primary);
+    display: block;
+    margin-bottom: 2px;
+}
+.glass-nav-card .nav-label-sub {
+    font-size: 9.5px;
+    color: var(--text-muted);
+    display: block;
+}
+.glass-nav-card:hover {
+    background: rgba(255, 255, 255, 0.07);
+    border-color: rgba(255, 255, 255, 0.2);
+    transform: translateY(-4px);
+    box-shadow: 
+        0 16px 32px rgba(0, 0, 0, 0.45),
+        0 0 15px rgba(0, 242, 254, 0.12),
+        inset 0 1px 2px rgba(255, 255, 255, 0.25);
+}
+.glass-nav-card:hover .nav-icon {
+    transform: scale(1.15) translateY(-2px);
+}
+.glass-nav-card.active {
+    background: linear-gradient(135deg, rgba(163, 184, 153, 0.12) 0%, rgba(215, 190, 151, 0.18) 100%);
+    border-color: rgba(215, 190, 151, 0.45);
+    box-shadow: 
+        0 12px 28px rgba(0, 0, 0, 0.4),
+        0 0 16px rgba(215, 190, 151, 0.2),
+        inset 0 1px 1px rgba(255, 255, 255, 0.35);
+}
+.glass-nav-card.active .nav-icon {
+    transform: scale(1.1);
+    filter: drop-shadow(0 0 6px rgba(0, 242, 254, 0.3));
+}
+
+/* Glass External Links Grid */
+.glass-external-grid {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 12px;
+    margin-bottom: 30px;
+    width: 100%;
+}
+.glass-external-card {
+    background: rgba(255, 255, 255, 0.015);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 12px;
+    padding: 10px 8px;
+    text-align: center;
+    text-decoration: none;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.25s ease;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    aspect-ratio: 1.45 / 1;
+}
+.glass-external-card:hover {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(255, 255, 255, 0.15);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(99, 102, 241, 0.15);
+}
+.glass-external-card .ext-icon {
+    font-size: 16px;
+    margin-bottom: 4px;
+}
+.glass-external-card .ext-label-main {
+    font-size: 11.5px;
+    font-weight: 600;
+    color: var(--text-primary);
+    line-height: 1.25;
+}
+.glass-external-card .ext-label-sub {
+    font-size: 9px;
+    color: var(--text-muted);
+    margin-top: 1px;
+}
+
+/* Custom Accordion for Sentiment Commentary */
+.insight-item {
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+.insight-desc {
+    max-height: 0;
+    overflow: hidden;
+    opacity: 0;
+    transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+    margin-top: 0;
+    padding-top: 0;
+}
+.insight-item.active .insight-desc {
+    max-height: 300px;
+    opacity: 1;
+    margin-top: 10px;
+    padding-top: 4px;
+}
+.insight-title {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    position: relative;
+}
+.insight-title::after {
+    content: '▼';
+    font-size: 9px;
+    color: var(--text-muted);
+    transition: transform 0.3s ease, color 0.3s ease;
+    flex-shrink: 0;
+}
+.insight-item.active .insight-title::after {
+    transform: rotate(180deg);
+    color: var(--accent);
+}
+
+/* Responsiveness overrides and enhancements */
+@media (max-width: 1024px) {
+    .glass-external-grid {
+        grid-template-columns: repeat(3, 1fr);
+    }
+}
+
+@media (max-width: 768px) {
+    .logo-cover-banner {
+        height: auto;
+        aspect-ratio: 21 / 9;
+    }
+    .cover-banner-img {
+        object-fit: contain;
+        background: #080b16;
+    }
+    .vertical-header {
+        align-items: center;
+        text-align: center;
+    }
+    .status-summary-bar {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 12px;
+        padding: 16px;
+    }
+    .status-info {
+        justify-content: center;
+    }
+    .glass-navigation-grid {
+        grid-template-columns: repeat(3, 1fr);
+        gap: 12px;
+    }
+    .glass-nav-card {
+        aspect-ratio: 1.15 / 1;
+        border-radius: 18px;
+        padding: 10px;
+    }
+    .glass-nav-card::before {
+        border-top-left-radius: 18px;
+        border-top-right-radius: 18px;
+    }
+    .glass-nav-card .nav-icon {
+        font-size: 22px;
+        margin-bottom: 4px;
+    }
+    .glass-nav-card .nav-label-main {
+        font-size: 12px;
+    }
+    .glass-nav-card .nav-label-sub {
+        font-size: 8.5px;
+    }
+    .glass-external-card {
+        padding: 8px 4px;
+        border-radius: 10px;
+        aspect-ratio: 1.3 / 1;
+    }
+    .glass-external-card .ext-label-main {
+        font-size: 10.5px;
+    }
+}
+
+@media (max-width: 480px) {
+    .glass-navigation-grid {
+        grid-template-columns: repeat(3, 1fr);
+        gap: 8px;
+    }
+    .glass-nav-card {
+        padding: 8px;
+        border-radius: 16px;
+    }
+    .glass-nav-card::before {
+        border-top-left-radius: 16px;
+        border-top-right-radius: 16px;
+    }
+    .glass-nav-card .nav-icon {
+        font-size: 20px;
+    }
+    .glass-nav-card .nav-label-main {
+        font-size: 11px;
+    }
+    .glass-external-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 8px;
+    }
+}
+
+/* 배당 정보 그리드 및 카드 */
+.dividend-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    gap: 16px;
+    margin-top: 12px;
+}
+.div-card {
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 12px;
+    padding: 16px;
+    text-align: center;
+    box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.05), 0 4px 12px rgba(0, 0, 0, 0.1);
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.div-card:hover {
+    transform: translateY(-3px);
+    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(99, 102, 241, 0.35);
+    box-shadow: 0 8px 20px rgba(99, 102, 241, 0.15), inset 0 1px 1px rgba(255, 255, 255, 0.08);
+}
+.div-label {
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.div-value {
+    font-size: 17px;
+    font-weight: 700;
+    font-family: var(--font-heading);
+    color: var(--accent);
+}
+
+/* 여행 계산기 양방향 스왑 버튼 */
+.travel-swap-btn {
+    background: rgba(99, 102, 241, 0.15);
+    border: 1px solid rgba(99, 102, 241, 0.3);
+    border-radius: 10px;
+    color: var(--accent);
+    width: 38px;
+    height: 38px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 15px;
+    font-weight: bold;
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.15);
+    flex-shrink: 0;
+}
+.travel-swap-btn:hover {
+    background: var(--primary);
+    color: #ffffff;
+    transform: scale(1.08) rotate(180deg);
+    box-shadow: 0 4px 15px var(--primary-glow);
+    border-color: rgba(255, 255, 255, 0.2);
+}
+.travel-swap-btn:active {
+    transform: scale(0.95) rotate(180deg);
+}
+
+/* 환율 미니 캔들바 스파크라인 캔버스 */
+.mini-candle-canvas {
+    background: rgba(5, 8, 18, 0.55);
+    border: 1px solid rgba(255, 255, 255, 0.04);
+    border-radius: 6px;
+    width: 80px;
+    height: 32px;
+    display: block;
+    margin-right: 14px;
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.5);
+    flex-shrink: 0;
+}
+
+/* Y축 배지 폰트 보정 */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@700&display=swap');
+
+/* ── 전역 가로 스크롤 완전 차단 (모바일 안전망) ── */
+@media (max-width: 768px) {
+    html,
+    body {
+        overflow-x: hidden !important;
+        max-width: 100vw !important;
+    }
+
+    .dashboard-container {
+        overflow-x: hidden !important;
+        max-width: 100% !important;
+        padding-left: 12px !important;
+        padding-right: 12px !important;
+        box-sizing: border-box !important;
+    }
+
+    /* 탭 뷰 섹션 전체 오버플로우 방지 */
+    .tab-view {
+        overflow-x: hidden !important;
+        max-width: 100% !important;
+    }
+
+    /* 컨센서스 박스 텍스트 줄바꿈 */
+    #detail-consensus-box {
+        display: flex !important;
+        flex-wrap: wrap !important;
+        gap: 4px !important;
+        font-size: 11px !important;
+    }
+
+    /* 티커 헤더 우측 정보박스 */
+    .ticker-header-right {
+        text-align: left !important;
+        max-width: 100% !important;
+        min-width: 0 !important;
+    }
+
+    /* 종목 상세 차트 섹션 래퍼 */
+    #detail-main-layout > div {
+        min-width: 0 !important;
+        max-width: 100% !important;
+        overflow-x: hidden !important;
+    }
 }

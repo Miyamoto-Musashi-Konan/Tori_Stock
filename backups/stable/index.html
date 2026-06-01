@@ -4,10 +4,16 @@
 <head>
     <script>
         window.onerror = function(msg, url, line, col, error) {
-            alert("JS ERROR: " + msg + "\nLine: " + line + "\nCol: " + col + "\nError: " + error);
+            // 외부 CDN 스크립트나 브라우저 확장 기능 등에서 발생하는 무해한 Cross-Origin 에러("Script error.")는 경고창을 띄우지 않고 무시합니다.
+            if (msg === "Script error." || (line === 0 && col === 0)) {
+                console.warn("Ignored cross-origin Script error:", { msg, url, line, col, error });
+                return true; 
+            }
+            console.error("JS ERROR:", msg, "at", url, "line:", line, "col:", col, "error:", error);
+            return false;
         };
         window.onunhandledrejection = function(event) {
-            alert("Unhandled Promise Rejection: " + event.reason);
+            console.error("Unhandled Promise Rejection:", event.reason);
         };
     </script>
     <meta charset="UTF-8">
@@ -78,19 +84,27 @@
         <div class="bg-glow-2"></div>
     </div>
 
+    <!-- Notion 스타일 커버 배너 -->
+    <div class="logo-cover-banner">
+        <img src="Chart_Logo.jpeg" alt="Tori Stock Banner" class="cover-banner-img">
+    </div>
+
     <div class="dashboard-container">
-        <!-- 상단 헤더 -->
-        <header>
-            <div class="logo-area">
-                <img src="Chart_Logo.jpeg" alt="Konan J Logo" class="logo-img">
-                <div class="logo-text">
-                    <h1>Konan J 주식 환율 알리미</h1>
-                    <span>체인소맨 금융정보서비스</span>
-                </div>
+        <!-- 상단 헤더 (상하 정렬 구조) -->
+        <header class="vertical-header">
+            <div class="title-section">
+                <h1>Konan J 주식 환율 알리미</h1>
+                <span class="subtitle">체인소맨 금융정보서비스</span>
             </div>
-            <div class="update-indicator">
-                <span class="pulse-dot"></span>
-                <span id="last-update-time">실시간 업데이트 활성화됨</span>
+            <!-- 가로쓰기 독립된 섹션 (유리 질감) -->
+            <div class="status-summary-bar">
+                <div class="status-info">
+                    <span class="pulse-dot"></span>
+                    <span id="last-update-time">실시간 실제 데이터 불러오기 완료</span>
+                </div>
+                <button class="portfolio-action-btn" id="my-portfolio-btn">
+                    💼 내 포트폴리오
+                </button>
             </div>
         </header>
 
@@ -139,74 +153,41 @@
                     </div>
                 </div>
             </div>
-
-            <!-- 마켓 한줄 뉴스 및 브리프 -->
-            <div class="status-badge-card market-news-ticker">
-                <span class="ticker-icon">MARKET REPORT</span>
-                <span class="ticker-content" id="market-brief-text">
-                    미 연준 금리 인하 기대감 속 기술주 중심 강세 지속... 원/달러 환율은 강달러 기조에 1,350원선 유지.
-                </span>
-            </div>
         </div>
 
-        <!-- 탭 메뉴 내비게이션 -->
-        <nav class="tab-navigation">
-            <button class="tab-btn active" id="tab-overview" onclick="switchTab('overview')" style="flex: 1;">
-                <span class="main-text">시장</span>
-                <span class="sub-text">개요</span>
-            </button>
-            <button class="tab-btn" id="tab-history" onclick="switchTab('history')" style="flex: 1;">
-                <span class="main-text">역사적 변동 분석</span>
-                <span class="sub-text">(2000~현재)</span>
-            </button>
-            <button class="tab-btn" id="tab-travel" onclick="switchTab('travel')" style="flex: 1;">
-                <span class="main-text">여행지 환율</span>
-                <span class="sub-text">계산기</span>
-            </button>
-            <button class="tab-btn" id="tab-sentiment" onclick="switchTab('sentiment')" style="flex: 1;">
-                <span class="main-text">시장 심리</span>
-                <span class="sub-text">지표</span>
-            </button>
-            <button class="tab-btn" id="tab-detail" onclick="switchTab('detail')" style="flex: 1;">
-                <span class="main-text">종목 분석</span>
-                <span class="sub-text">상세 차트</span>
-            </button>
-        </nav>
-
-        <!-- 외부 링크 내비게이션 (메인 탭과 동일한 너비/정렬 유지) -->
-        <nav class="tab-navigation">
-            <a href="https://markets.hankyung.com/" target="_blank" class="tab-btn external-link-btn"
-                style="text-decoration: none; display: flex; flex-direction: column; justify-content: center; align-items: center; flex: 1;">
-                <span class="main-text">컨센서스</span>
-                <span class="sub-text">외부 링크</span>
-            </a>
-            <a href="https://markets.hankyung.com/consensus" target="_blank" class="tab-btn external-link-btn"
-                style="text-decoration: none; display: flex; flex-direction: column; justify-content: center; align-items: center; flex: 1;">
-                <span class="main-text">애널리스트 리포트</span>
-                <span class="sub-text">외부 링크</span>
-            </a>
-            <a href="https://markets.hankyung.com/investment/investors" target="_blank"
-                class="tab-btn external-link-btn"
-                style="text-decoration: none; display: flex; flex-direction: column; justify-content: center; align-items: center; flex: 1;">
-                <span class="main-text">투자 주체별 동향</span>
-                <span class="sub-text">외부 링크</span>
-            </a>
-            <a href="https://markets.hankyung.com/marketmap/kospi" target="_blank" class="tab-btn external-link-btn"
-                style="text-decoration: none; display: flex; flex-direction: column; justify-content: center; align-items: center; flex: 1;">
-                <span class="main-text">마켓 MAP 코스피</span>
-                <span class="sub-text">외부 링크</span>
-            </a>
-            <a href="https://markets.hankyung.com/marketmap/kosdaq" target="_blank" class="tab-btn external-link-btn"
-                style="text-decoration: none; display: flex; flex-direction: column; justify-content: center; align-items: center; flex: 1;">
-                <span class="main-text">마켓 MAP 코스닥</span>
-                <span class="sub-text">외부 링크</span>
-            </a>
-            <a href="https://markets.hankyung.com/index-info/volume" target="_blank" class="tab-btn external-link-btn"
-                style="text-decoration: none; display: flex; flex-direction: column; justify-content: center; align-items: center; flex: 1;">
-                <span class="main-text">거래량</span>
-                <span class="sub-text">외부 링크</span>
-            </a>
-        </nav>
+        <!-- iOS 스타일 스쿼클 글래스모피즘 메인 내비게이션 그리드 -->
+        <div class="glass-navigation-grid">
+            <div class="glass-nav-card active" id="tab-overview" onclick="switchTab('overview')">
+                <span class="nav-icon">📊</span>
+                <span class="nav-label-main">시장 개요</span>
+                <span class="nav-label-sub">Market Overview</span>
+            </div>
+            <div class="glass-nav-card" id="tab-history" onclick="switchTab('history')">
+                <span class="nav-icon">⏳</span>
+                <span class="nav-label-main">역사적 분석</span>
+                <span class="nav-label-sub">Historical Trends</span>
+            </div>
+            <div class="glass-nav-card" id="tab-travel" onclick="switchTab('travel')">
+                <span class="nav-icon">✈️</span>
+                <span class="nav-label-main">여행지 환율</span>
+                <span class="nav-label-sub">Travel Currency</span>
+            </div>
+            <div class="glass-nav-card" id="tab-sentiment" onclick="switchTab('sentiment')">
+                <span class="nav-icon">🧠</span>
+                <span class="nav-label-main">시장 심리</span>
+                <span class="nav-label-sub">Market Sentiment</span>
+            </div>
+            <div class="glass-nav-card" id="tab-detail" onclick="switchTab('detail')">
+                <span class="nav-icon">🔍</span>
+                <span class="nav-label-main">종목 분석</span>
+                <span class="nav-label-sub">Detailed Chart</span>
+            </div>
+            <div class="glass-nav-card" id="tab-external" onclick="switchTab('external')">
+                <span class="nav-icon">🔗</span>
+                <span class="nav-label-main">Market Report</span>
+                <span class="nav-label-sub">외부링크</span>
+            </div>
+        </div>
 
         <!-- 항상 표시되는 전역 티커 검색 섹션 -->
         <div class="ticker-search-container" style="margin-top: 20px;">
@@ -392,42 +373,57 @@
                     <h3 class="status-label" style="margin-bottom: 16px;">달러 대비 환율 및 통화가치 변동 (USD Basis)</h3>
                     <div class="dollar-basis-list" id="dollar-basis-list">
                         <!-- EUR/USD -->
-                        <div class="dollar-basis-item">
-                            <span class="basis-name" id="basis-lbl-eur">유로화 (EUR/USD)</span>
-                            <div class="basis-value-group">
-                                <span class="basis-val" id="basis-val-eur">1.0815</span>
+                        <div class="dollar-basis-item" style="display: flex; align-items: center; justify-content: space-between; padding: 10px 14px;">
+                            <div style="display: flex; align-items: center; flex: 1;">
+                                <canvas class="mini-candle-canvas" id="mini-candle-eur" width="80" height="32"></canvas>
+                                <span class="basis-name" id="basis-lbl-eur" style="font-weight: 600;">유로/달러 (EUR/USD)</span>
+                            </div>
+                            <div class="basis-value-group" style="text-align: right; display: flex; align-items: center; gap: 8px;">
+                                <span class="basis-val" id="basis-val-eur" style="font-weight: 700;">1.0815</span>
                                 <span class="basis-change bearish-badge" id="basis-chg-eur">-0.45%</span>
                             </div>
                         </div>
                         <!-- USD/JPY -->
-                        <div class="dollar-basis-item">
-                            <span class="basis-name" id="basis-lbl-jpy">엔화 (USD/JPY)</span>
-                            <div class="basis-value-group">
-                                <span class="basis-val" id="basis-val-jpy">157.04</span>
+                        <div class="dollar-basis-item" style="display: flex; align-items: center; justify-content: space-between; padding: 10px 14px;">
+                            <div style="display: flex; align-items: center; flex: 1;">
+                                <canvas class="mini-candle-canvas" id="mini-candle-jpy" width="80" height="32"></canvas>
+                                <span class="basis-name" id="basis-lbl-jpy" style="font-weight: 600;">달러/엔 (USD/JPY)</span>
+                            </div>
+                            <div class="basis-value-group" style="text-align: right; display: flex; align-items: center; gap: 8px;">
+                                <span class="basis-val" id="basis-val-jpy" style="font-weight: 700;">157.04</span>
                                 <span class="basis-change bullish-badge" id="basis-chg-jpy">+0.80%</span>
                             </div>
                         </div>
                         <!-- GBP/USD -->
-                        <div class="dollar-basis-item">
-                            <span class="basis-name" id="basis-lbl-gbp">영국 파운드 (GBP/USD)</span>
-                            <div class="basis-value-group">
-                                <span class="basis-val" id="basis-val-gbp">1.2678</span>
+                        <div class="dollar-basis-item" style="display: flex; align-items: center; justify-content: space-between; padding: 10px 14px;">
+                            <div style="display: flex; align-items: center; flex: 1;">
+                                <canvas class="mini-candle-canvas" id="mini-candle-gbp" width="80" height="32"></canvas>
+                                <span class="basis-name" id="basis-lbl-gbp" style="font-weight: 600;">파운드/달러 (GBP/USD)</span>
+                            </div>
+                            <div class="basis-value-group" style="text-align: right; display: flex; align-items: center; gap: 8px;">
+                                <span class="basis-val" id="basis-val-gbp" style="font-weight: 700;">1.2678</span>
                                 <span class="basis-change bearish-badge" id="basis-chg-gbp">-0.25%</span>
                             </div>
                         </div>
                         <!-- USD/CNY -->
-                        <div class="dollar-basis-item">
-                            <span class="basis-name" id="basis-lbl-cny">중국 위안 (USD/CNY)</span>
-                            <div class="basis-value-group">
-                                <span class="basis-val" id="basis-val-cny">7.2480</span>
+                        <div class="dollar-basis-item" style="display: flex; align-items: center; justify-content: space-between; padding: 10px 14px;">
+                            <div style="display: flex; align-items: center; flex: 1;">
+                                <canvas class="mini-candle-canvas" id="mini-candle-cny" width="80" height="32"></canvas>
+                                <span class="basis-name" id="basis-lbl-cny" style="font-weight: 600;">달러/위안 (USD/CNY)</span>
+                            </div>
+                            <div class="basis-value-group" style="text-align: right; display: flex; align-items: center; gap: 8px;">
+                                <span class="basis-val" id="basis-val-cny" style="font-weight: 700;">7.2480</span>
                                 <span class="basis-change bullish-badge" id="basis-chg-cny">+0.08%</span>
                             </div>
                         </div>
                         <!-- USD/KRW -->
-                        <div class="dollar-basis-item">
-                            <span class="basis-name" id="basis-lbl-krw">한국 원화 (USD/KRW)</span>
-                            <div class="basis-value-group">
-                                <span class="basis-val" id="basis-val-krw">1,352.40</span>
+                        <div class="dollar-basis-item" style="display: flex; align-items: center; justify-content: space-between; padding: 10px 14px;">
+                            <div style="display: flex; align-items: center; flex: 1;">
+                                <canvas class="mini-candle-canvas" id="mini-candle-krw" width="80" height="32"></canvas>
+                                <span class="basis-name" id="basis-lbl-krw" style="font-weight: 600;">달러/원 (USD/KRW)</span>
+                            </div>
+                            <div class="basis-value-group" style="text-align: right; display: flex; align-items: center; gap: 8px;">
+                                <span class="basis-val" id="basis-val-krw" style="font-weight: 700;">1,352.40</span>
                                 <span class="basis-change bullish-badge" id="basis-chg-krw">+0.29%</span>
                             </div>
                         </div>
@@ -545,8 +541,12 @@
                         </div>
                         <div class="travel-calc-box">
                             <span class="travel-calc-result" id="travel-res-usd">100 USD = 135,240 원</span>
-                            <input type="number" class="travel-calc-input" id="travel-input-usd" value="100"
-                                oninput="calculateTravelExchange('usd')">
+                            <div style="display: flex; align-items: center; gap: 8px; width: 100%; margin-top: 8px;">
+                                <input type="number" class="travel-calc-input" id="travel-input-usd" value="100"
+                                    oninput="calculateTravelExchange('usd')" style="flex: 1; margin: 0;">
+                                <span class="travel-unit-badge" id="travel-unit-usd" style="font-size: 13px; font-weight: bold; color: var(--text-secondary); min-width: 32px;">USD</span>
+                                <button class="travel-swap-btn" onclick="toggleTravelDirection('usd')" title="환율 계산 방향 전환">⇄</button>
+                            </div>
                         </div>
                     </div>
 
@@ -568,8 +568,12 @@
                         </div>
                         <div class="travel-calc-box">
                             <span class="travel-calc-result" id="travel-res-krw">1 USD = 1,352.40 원</span>
-                            <input type="number" class="travel-calc-input" id="travel-input-krw" value="1"
-                                oninput="calculateTravelExchange('krw')">
+                            <div style="display: flex; align-items: center; gap: 8px; width: 100%; margin-top: 8px;">
+                                <input type="number" class="travel-calc-input" id="travel-input-krw" value="1"
+                                    oninput="calculateTravelExchange('krw')" style="flex: 1; margin: 0;">
+                                <span class="travel-unit-badge" id="travel-unit-krw" style="font-size: 13px; font-weight: bold; color: var(--text-secondary); min-width: 32px;">USD</span>
+                                <button class="travel-swap-btn" onclick="toggleTravelDirection('krw')" title="환율 계산 방향 전환">⇄</button>
+                            </div>
                         </div>
                     </div>
 
@@ -592,8 +596,12 @@
                         </div>
                         <div class="travel-calc-box">
                             <span class="travel-calc-result" id="travel-res-jpy">10,000 JPY = 86,120 원</span>
-                            <input type="number" class="travel-calc-input" id="travel-input-jpy" value="10000"
-                                oninput="calculateTravelExchange('jpy')">
+                            <div style="display: flex; align-items: center; gap: 8px; width: 100%; margin-top: 8px;">
+                                <input type="number" class="travel-calc-input" id="travel-input-jpy" value="10000"
+                                    oninput="calculateTravelExchange('jpy')" style="flex: 1; margin: 0;">
+                                <span class="travel-unit-badge" id="travel-unit-jpy" style="font-size: 13px; font-weight: bold; color: var(--text-secondary); min-width: 32px;">JPY</span>
+                                <button class="travel-swap-btn" onclick="toggleTravelDirection('jpy')" title="환율 계산 방향 전환">⇄</button>
+                            </div>
                         </div>
                     </div>
 
@@ -616,8 +624,12 @@
                         </div>
                         <div class="travel-calc-box">
                             <span class="travel-calc-result" id="travel-res-eur">100 EUR = 146,260 원</span>
-                            <input type="number" class="travel-calc-input" id="travel-input-eur" value="100"
-                                oninput="calculateTravelExchange('eur')">
+                            <div style="display: flex; align-items: center; gap: 8px; width: 100%; margin-top: 8px;">
+                                <input type="number" class="travel-calc-input" id="travel-input-eur" value="100"
+                                    oninput="calculateTravelExchange('eur')" style="flex: 1; margin: 0;">
+                                <span class="travel-unit-badge" id="travel-unit-eur" style="font-size: 13px; font-weight: bold; color: var(--text-secondary); min-width: 32px;">EUR</span>
+                                <button class="travel-swap-btn" onclick="toggleTravelDirection('eur')" title="환율 계산 방향 전환">⇄</button>
+                            </div>
                         </div>
                     </div>
 
@@ -640,8 +652,12 @@
                         </div>
                         <div class="travel-calc-box">
                             <span class="travel-calc-result" id="travel-res-cny">1,000 CNY = 186,500 원</span>
-                            <input type="number" class="travel-calc-input" id="travel-input-cny" value="1000"
-                                oninput="calculateTravelExchange('cny')">
+                            <div style="display: flex; align-items: center; gap: 8px; width: 100%; margin-top: 8px;">
+                                <input type="number" class="travel-calc-input" id="travel-input-cny" value="1000"
+                                    oninput="calculateTravelExchange('cny')" style="flex: 1; margin: 0;">
+                                <span class="travel-unit-badge" id="travel-unit-cny" style="font-size: 13px; font-weight: bold; color: var(--text-secondary); min-width: 32px;">CNY</span>
+                                <button class="travel-swap-btn" onclick="toggleTravelDirection('cny')" title="환율 계산 방향 전환">⇄</button>
+                            </div>
                         </div>
                     </div>
 
@@ -664,8 +680,12 @@
                         </div>
                         <div class="travel-calc-box">
                             <span class="travel-calc-result" id="travel-res-vnd">100,000 VND = 5,310 원</span>
-                            <input type="number" class="travel-calc-input" id="travel-input-vnd" value="100000"
-                                oninput="calculateTravelExchange('vnd')">
+                            <div style="display: flex; align-items: center; gap: 8px; width: 100%; margin-top: 8px;">
+                                <input type="number" class="travel-calc-input" id="travel-input-vnd" value="100000"
+                                    oninput="calculateTravelExchange('vnd')" style="flex: 1; margin: 0;">
+                                <span class="travel-unit-badge" id="travel-unit-vnd" style="font-size: 13px; font-weight: bold; color: var(--text-secondary); min-width: 32px;">VND</span>
+                                <button class="travel-swap-btn" onclick="toggleTravelDirection('vnd')" title="환율 계산 방향 전환">⇄</button>
+                            </div>
                         </div>
                     </div>
 
@@ -688,8 +708,12 @@
                         </div>
                         <div class="travel-calc-box">
                             <span class="travel-calc-result" id="travel-res-thb">1,000 THB = 36,850 원</span>
-                            <input type="number" class="travel-calc-input" id="travel-input-thb" value="1000"
-                                oninput="calculateTravelExchange('thb')">
+                            <div style="display: flex; align-items: center; gap: 8px; width: 100%; margin-top: 8px;">
+                                <input type="number" class="travel-calc-input" id="travel-input-thb" value="1000"
+                                    oninput="calculateTravelExchange('thb')" style="flex: 1; margin: 0;">
+                                <span class="travel-unit-badge" id="travel-unit-thb" style="font-size: 13px; font-weight: bold; color: var(--text-secondary); min-width: 32px;">THB</span>
+                                <button class="travel-swap-btn" onclick="toggleTravelDirection('thb')" title="환율 계산 방향 전환">⇄</button>
+                            </div>
                         </div>
                     </div>
 
@@ -712,8 +736,12 @@
                         </div>
                         <div class="travel-calc-box">
                             <span class="travel-calc-result" id="travel-res-twd">1,000 TWD = 41,920 원</span>
-                            <input type="number" class="travel-calc-input" id="travel-input-twd" value="1000"
-                                oninput="calculateTravelExchange('twd')">
+                            <div style="display: flex; align-items: center; gap: 8px; width: 100%; margin-top: 8px;">
+                                <input type="number" class="travel-calc-input" id="travel-input-twd" value="1000"
+                                    oninput="calculateTravelExchange('twd')" style="flex: 1; margin: 0;">
+                                <span class="travel-unit-badge" id="travel-unit-twd" style="font-size: 13px; font-weight: bold; color: var(--text-secondary); min-width: 32px;">TWD</span>
+                                <button class="travel-swap-btn" onclick="toggleTravelDirection('twd')" title="환율 계산 방향 전환">⇄</button>
+                            </div>
                         </div>
                     </div>
 
@@ -736,8 +764,12 @@
                         </div>
                         <div class="travel-calc-box">
                             <span class="travel-calc-result" id="travel-res-sgd">100 SGD = 100,280 원</span>
-                            <input type="number" class="travel-calc-input" id="travel-input-sgd" value="100"
-                                oninput="calculateTravelExchange('sgd')">
+                            <div style="display: flex; align-items: center; gap: 8px; width: 100%; margin-top: 8px;">
+                                <input type="number" class="travel-calc-input" id="travel-input-sgd" value="100"
+                                    oninput="calculateTravelExchange('sgd')" style="flex: 1; margin: 0;">
+                                <span class="travel-unit-badge" id="travel-unit-sgd" style="font-size: 13px; font-weight: bold; color: var(--text-secondary); min-width: 32px;">SGD</span>
+                                <button class="travel-swap-btn" onclick="toggleTravelDirection('sgd')" title="환율 계산 방향 전환">⇄</button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -751,18 +783,19 @@
                 <a href="https://edition.cnn.com/markets/fear-and-greed" target="_blank"
                     style="text-decoration: none; color: inherit; display: block;">
                     <div class="sentiment-card sentiment-card-interactive" id="sentiment-card-meter"
-                        style="cursor: pointer; position: relative;">
-                        <div
-                            style="position: absolute; top: 20px; right: 24px; color: var(--text-muted); font-size: 11px; display: flex; align-items: center; gap: 4px;">
-                            <span>CNN 오리지널 사이트</span>
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                                stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
-                                <polyline points="15 3 21 3 21 9"></polyline>
-                                <line x1="10" y1="14" x2="21" y2="3"></line>
-                            </svg>
+                        style="cursor: pointer;">
+                        <div class="sentiment-card-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 8px;">
+                            <h3 class="section-title" style="margin: 0;">Fear & Greed Index</h3>
+                            <div style="color: var(--text-muted); font-size: 11px; display: flex; align-items: center; gap: 4px; background: rgba(255,255,255,0.03); padding: 4px 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05);">
+                                <span>CNN 오리지널 사이트</span>
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                    stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                                    <polyline points="15 3 21 3 21 9"></polyline>
+                                    <line x1="10" y1="14" x2="21" y2="3"></line>
+                                </svg>
+                            </div>
                         </div>
-                        <h3 class="section-title" style="margin-bottom: 20px;">Fear & Greed Index</h3>
                         <div class="fear-greed-large-meter">
                             <svg viewBox="0 0 240 160"
                                 style="width: 100%; height: auto; max-width: 440px; display: block; margin: 0 auto;">
@@ -882,24 +915,6 @@
                     </div>
                 </div>
 
-                <!-- 네이버 실시간 주요 뉴스 섹션 -->
-                <div class="sentiment-card naver-news-section" style="grid-column: span 2;">
-                    <div class="naver-news-header"
-                        style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 12px; flex-wrap: wrap; gap: 12px;">
-                        <h3 class="section-title" style="margin-bottom: 0;">네이버 증권 실시간 주요 뉴스</h3>
-                        <span id="naver-news-time" class="update-indicator"
-                            style="font-size: 11px; color: var(--text-muted);">뉴스 동기화 중...</span>
-                    </div>
-                    <!-- 뉴스 세분화 탭 인터페이스 -->
-                    <div class="naver-news-tabs" style="display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap;">
-                        <button class="news-tab-btn active" onclick="switchNewsTab('stock')" id="news-tab-stock">📈 국내외 증시</button>
-                        <button class="news-tab-btn" onclick="switchNewsTab('forex')" id="news-tab-forex">💵 국내외 외환</button>
-                        <button class="news-tab-btn" onclick="switchNewsTab('economy')" id="news-tab-economy">🌐 글로벌 경제 & 공시</button>
-                    </div>
-                    <div class="naver-news-container" id="naver-news-list">
-                        <!-- 실시간으로 동적으로 바인딩됨 -->
-                    </div>
-                </div>
             </div>
         </section>
 
@@ -908,7 +923,12 @@
             <div class="ticker-detail-container">
                 <div class="ticker-detail-header" id="ticker-detail-header">
                     <div class="ticker-header-left">
-                        <h2 class="section-title" id="detail-title" style="margin-bottom: 8px;">종목을 검색해주세요</h2>
+                        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
+                            <h2 class="section-title" id="detail-title" style="margin-bottom: 0;">종목을 검색해주세요</h2>
+                            <button class="portfolio-action-btn" id="add-to-portfolio-btn" style="display: none; padding: 6px 12px; font-size: 12px;">
+                                ➕ 포트폴리오 담기
+                            </button>
+                        </div>
                         <span class="crisis-year-badge" id="detail-exchange"
                             style="display: inline-block;">Exchange</span>
                     </div>
@@ -985,11 +1005,16 @@
                                     style="color: #f43f5e; font-weight: bold; font-size: 18px;">1.50</span>초</div>
                         </div>
 
-                        <!-- 캔들 설명 텍스트 -->
+                        <!-- 캔들 설명 텍스트 - 2줄 구조: 1행=실시간포인터 / 2행=시가·종가대비 -->
                         <div id="detail-candle-desc" class="candle-desc-tooltip"
-                            style="opacity: 0; bottom: -30px; position: absolute; left: 50%; transform: translateX(-50%);">
-                            💡 <span style="color:#e2e8f0;"><strong>O</strong>: 시가(Open)</span> &nbsp;|&nbsp; <span style="color:#f43f5e;"><strong>H</strong>: 고가(High)</span> &nbsp;|&nbsp;
-                            <span style="color:#3b82f6;"><strong>L</strong>: 저가(Low)</span> &nbsp;|&nbsp; <span style="color:#10b981;"><strong>C</strong>: 종가(Close)</span>
+                            style="opacity: 0.4; position: relative; text-align: center; margin: 15px auto 0 auto; padding: 10px 14px; background: rgba(255,255,255,0.02); border-radius: 8px; border: 1px solid rgba(255,255,255,0.05); max-width: 680px; width: 100%; font-size: 12.5px;">
+                            <!-- 1행: 실시간 포인터 가격 -->
+                            <div id="desc-pointer-line" style="line-height:1.6;">
+                                💡 <span style="color:#e2e8f0;"><strong>O</strong>: 시가(Open)</span> &nbsp;|&nbsp; <span style="color:#f43f5e;"><strong>H</strong>: 고가(High)</span> &nbsp;|&nbsp;
+                                <span style="color:#3b82f6;"><strong>L</strong>: 저가(Low)</span> &nbsp;|&nbsp; <span style="color:#10b981;"><strong>C</strong>: 종가(Close)</span>
+                            </div>
+                            <!-- 2행: 시가대비·종가대비 (동의 후 캔들 호버 시만 표시) -->
+                            <div id="desc-comparison-line" style="display:none; margin-top:6px; padding-top:6px; border-top:1px solid rgba(255,255,255,0.07); font-size:11.5px; color:#94a3b8; line-height:1.5;"></div>
                         </div>
                     </div>
 
@@ -1090,13 +1115,73 @@
                         <h3
                             style="color: var(--text-color); margin-top: 0; margin-bottom: 16px; font-size: 15px; border-left: 3px solid var(--accent); padding-left: 8px;">
                             연간 주요 재무 실적 (단위: 천)</h3>
-                        <div id="financial-table-wrapper" style="overflow-x: auto;">
+                        <div id="financial-table-wrapper" style="overflow-x: auto; margin-bottom: 24px;">
                             <!-- JS로 동적 테이블 삽입 -->
+                        </div>
+                        <hr class="panel-divider"
+                            style="border: 0; height: 1px; background: rgba(255,255,255,0.05); margin: 24px 0 20px 0;">
+                        <h3
+                            style="color: var(--text-color); margin-top: 0; margin-bottom: 16px; font-size: 15px; border-left: 3px solid var(--accent); padding-left: 8px;">
+                            주요 배당 정보 및 이력</h3>
+                        <div id="dividend-history-wrapper">
+                            <!-- JS로 동적 배당 카드 및 테이블 삽입 -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 관련 최신 주요 뉴스 컨테이너 -->
+                <div id="detail-news-container" style="margin-top: 24px; display: none;">
+                    <div class="side-panel-card"
+                        style="background: rgba(13, 20, 38, 0.6); border: 1px solid rgba(255,255,255,0.05); border-radius: 12px; padding: 20px; box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.08);">
+                        <h3
+                            style="color: var(--text-color); margin-top: 0; margin-bottom: 16px; font-size: 15px; border-left: 3px solid var(--accent); padding-left: 8px;">
+                            관련 최신 주요 뉴스 및 공시 (중요도 순)</h3>
+                        <div id="detail-news-list" style="display: flex; flex-direction: column; gap: 12px;">
+                            <!-- JS로 동적 관련 뉴스 카드 삽입 -->
                         </div>
                     </div>
                 </div>
         </section>
         </main>
+ 
+        <!-- [VIEW 6] 외부 링크 탭 -->
+        <section class="tab-view" id="view-external">
+            <div class="section-title-wrapper" style="margin-bottom: 20px;">
+                <h2 class="section-title">Market Report 외부링크</h2>
+            </div>
+            <div class="glass-navigation-grid" style="grid-template-columns: repeat(3, 1fr) !important; max-width: 900px; margin: 20px auto 16px auto;">
+                <a href="https://markets.hankyung.com/" target="_blank" class="glass-nav-card" style="text-decoration: none;">
+                    <span class="nav-icon">📊</span>
+                    <span class="nav-label-main">컨센서스</span>
+                    <span class="nav-label-sub">외부 링크</span>
+                </a>
+                <a href="https://markets.hankyung.com/consensus" target="_blank" class="glass-nav-card" style="text-decoration: none;">
+                    <span class="nav-icon">📄</span>
+                    <span class="nav-label-main">애널리스트 리포트</span>
+                    <span class="nav-label-sub">외부 링크</span>
+                </a>
+                <a href="https://markets.hankyung.com/investment/investors" target="_blank" class="glass-nav-card" style="text-decoration: none;">
+                    <span class="nav-icon">👥</span>
+                    <span class="nav-label-main">투자주체 동향</span>
+                    <span class="nav-label-sub">외부 링크</span>
+                </a>
+                <a href="https://markets.hankyung.com/marketmap/kospi" target="_blank" class="glass-nav-card" style="text-decoration: none;">
+                    <span class="nav-icon">🗺️</span>
+                    <span class="nav-label-main">코스피 맵</span>
+                    <span class="nav-label-sub">외부 링크</span>
+                </a>
+                <a href="https://markets.hankyung.com/marketmap/kosdaq" target="_blank" class="glass-nav-card" style="text-decoration: none;">
+                    <span class="nav-icon">🗺️</span>
+                    <span class="nav-label-main">코스닥 맵</span>
+                    <span class="nav-label-sub">외부 링크</span>
+                </a>
+                <a href="https://markets.hankyung.com/index-info/volume" target="_blank" class="glass-nav-card" style="text-decoration: none;">
+                    <span class="nav-icon">📈</span>
+                    <span class="nav-label-main">거래량 순위</span>
+                    <span class="nav-label-sub">외부 링크</span>
+                </a>
+            </div>
+        </section>
 
         <footer>
             <p>© 2026 Konan J 주식 환율 알리미 / 체인소맨 금융정보서비스. Real-time and historical financial API data synced.</p>
@@ -1104,10 +1189,95 @@
         </footer>
     </div>
 
+    <!-- 내 포트폴리오 모달 -->
+    <div class="modal-overlay" id="portfolio-modal">
+        <div class="portfolio-modal-container">
+            <div class="modal-header">
+                <h3 class="modal-title">💼 내 포트폴리오</h3>
+                <button class="close-btn" id="close-portfolio-modal-btn">&times;</button>
+            </div>
+            
+            <div class="portfolio-list" id="portfolio-items-list">
+                <!-- 포트폴리오 항목이 동적으로 주입됩니다 -->
+            </div>
+            
+            <!-- 포트폴리오 시뮬레이션 / 분석 영역 -->
+            <div class="analysis-section" id="portfolio-analysis-section">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                    <h4 class="section-title" style="font-size: 16px; margin: 0;">📈 포트폴리오 10개년 백테스팅</h4>
+                    <div class="timeframe-buttons" id="portfolio-backtest-timeframe">
+                        <button class="time-btn" data-period="10y">10년</button>
+                        <button class="time-btn" data-period="7y">7년</button>
+                        <button class="time-btn active" data-period="5y">5년</button>
+                        <button class="time-btn" data-period="3y">3년</button>
+                        <button class="time-btn" data-period="1y">1년</button>
+                        <button class="time-btn" data-period="6mo">6개월</button>
+                    </div>
+                </div>
+                <div class="backtest-chart-container">
+                    <canvas id="chart-portfolio-backtest"></canvas>
+                </div>
+            </div>
+
+            <div class="modal-footer">
+                <button class="portfolio-action-btn" id="analyze-portfolio-btn" style="background: linear-gradient(135deg, var(--accent) 0%, #00b8d4 100%); color: #0f172a; border-color: rgba(0, 242, 254, 0.4); box-shadow: 0 4px 12px var(--accent-glow);">
+                    📊 포트폴리오 분석
+                </button>
+                <button class="portfolio-action-btn" id="close-portfolio-modal-footer-btn" style="background: rgba(255, 255, 255, 0.05); border-color: rgba(255,255,255,0.1); box-shadow: none;">
+                    닫기
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- 스크립트 연결 -->
     <script src="historical-data.js"></script>
     <script src="mock-data.js"></script>
     <script src="app.js"></script>
+
+    <!-- 차트 실시간 정보 표시 동의 팝업 (TradingView 스타일, 세션당 1회) -->
+    <div id="chart-info-consent-popup" style="
+        display: none;
+        position: fixed;
+        z-index: 99999;
+        pointer-events: auto;
+    ">
+        <div style="
+            background: linear-gradient(135deg, rgba(30,41,80,0.97) 0%, rgba(17,24,56,0.97) 100%);
+            border: 1px solid rgba(99,102,241,0.45);
+            border-radius: 14px;
+            padding: 18px 22px;
+            max-width: 280px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.04);
+            backdrop-filter: blur(12px);
+            color: #e2e8f0;
+            font-size: 13px;
+            line-height: 1.55;
+        ">
+            <div style="display:flex; align-items:flex-start; gap:10px; margin-bottom:14px;">
+                <span style="font-size:20px; flex-shrink:0;">📊</span>
+                <div>
+                    <div style="font-weight:700; font-size:13.5px; color:#fff; margin-bottom:4px;">실시간 차트 정보</div>
+                    <div style="color:#94a3b8;">캔들에 마우스를 올리면<br><strong style="color:#c7d2fe;">실시간 가격 및 시가·종가 대비 정보</strong>를 하단에 표시합니다.</div>
+                </div>
+            </div>
+            <button id="chart-consent-ok-btn" style="
+                width: 100%;
+                padding: 10px;
+                background: linear-gradient(135deg, #6366f1, #8b5cf6);
+                border: none;
+                border-radius: 9px;
+                color: #fff;
+                font-size: 13px;
+                font-weight: 700;
+                cursor: pointer;
+                transition: opacity 0.2s, transform 0.15s;
+                letter-spacing: 0.3px;
+            " onmouseover="this.style.opacity='0.88'" onmouseout="this.style.opacity='1'">
+                확인 · Got it!
+            </button>
+        </div>
+    </div>
 </body>
 
 </html>
