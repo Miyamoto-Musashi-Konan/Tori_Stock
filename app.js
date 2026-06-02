@@ -1510,6 +1510,59 @@ document.addEventListener("DOMContentLoaded", () => {
                 }
             }
         });
+
+        // 섹션 타이틀과 설명에도 현재 연도를 동적 반영
+        const currentYear = new Date().getFullYear();
+        const sectionTitleEl = document.getElementById('historical-section-title');
+        if (sectionTitleEl) {
+            sectionTitleEl.textContent = `역사적 통화 가치 및 자산 변동성 (2000년 ~ ${currentYear}년)`;
+        }
+        const sectionDescEl = document.getElementById('historical-section-desc');
+        if (sectionDescEl) {
+            sectionDescEl.innerHTML = `
+                2000년 닷컴버블부터 <strong>2008~2009년 글로벌 금융위기 최저점</strong>을 지나 <strong>${currentYear}년 현재</strong>까지의 자산군 장기 흐름을 시각화합니다.
+                원화의 실질가치(실질실효환율 REER)가 금융위기 당시 어떻게 급락하고 극복했는지 살펴보세요. (2000년 가치 = 100 기준 지수화)
+            `;
+        }
+
+        // 현재 경제 분석 카드(crisis-card-2026) 텍스트 동적 업데이트 (현재 날짜 기점 시의성 반영)
+        const crisisCard = document.getElementById('crisis-card-2026');
+        if (crisisCard) {
+            const now = new Date();
+            const year = now.getFullYear();
+            const month = now.getMonth() + 1;
+            
+            // 실시간 엔화/달러 가격 조회
+            let jpyRateText = "860원대";
+            let usdRateText = "1,350원대";
+            
+            try {
+                if (window.MockDataModule) {
+                    const currencies = window.MockDataModule.getLiveCurrencies();
+                    if (currencies && currencies.jpy) {
+                        jpyRateText = `${Math.floor(currencies.jpy.current)}원대`;
+                    }
+                    if (currencies && currencies.usd) {
+                        usdRateText = `${formatNumber(Math.floor(currencies.usd.current), 0)}원대`;
+                    }
+                }
+            } catch(e) {
+                console.warn("Failed to get live currency rates for analysis card:", e);
+            }
+
+            const badge = crisisCard.querySelector('.crisis-year-badge');
+            if (badge) {
+                badge.innerText = `2024 - ${year}년 ${month}월`;
+            }
+
+            const textContainer = crisisCard.querySelector('.crisis-text');
+            if (textContainer) {
+                textContainer.innerHTML = `
+                    <h4>고금리 장기화 및 실시간 엔저 분석</h4>
+                    <p>${year}년 ${month}월 현재, 미국 고금리 지속에 따른 달러 강세 압박 속에서 원/달러 환율은 ${usdRateText}의 박스권을 형성하고 있습니다. 특히 엔저 현상이 극대화되면서 원/엔 재정환율은 <strong>JPY/KRW ${jpyRateText}</strong>의 역사적 최저 구간을 지속 중입니다. 이에 따라 개인 투자자들의 해외 자산 및 환노출 ETF 포트폴리오 다변화 전략이 그 어느 때보다 중요해진 시점입니다.</p>
+                `;
+            }
+        }
     }
 
     // 7-2. 역사적 데이터 차트 표시 토글
@@ -2116,6 +2169,44 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     }
 
+    // CORS 우회용 텍스트/XML API 호출 루프 (구글 뉴스 RSS 전용)
+    async function fetchTextWithProxyFallback(url) {
+        const createFetch = async (proxyUrl, isJsonWrapper) => {
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 6000); // 6초 타임아웃
+            try {
+                const res = await fetch(proxyUrl, { signal: controller.signal });
+                clearTimeout(timeout);
+                if (!res.ok) throw new Error("HTTP error " + res.status);
+                if (isJsonWrapper) {
+                    const wrapper = await res.json();
+                    return wrapper.contents;
+                }
+                return await res.text();
+            } catch (e) {
+                clearTimeout(timeout);
+                throw e;
+            }
+        };
+
+        const promises = [
+            createFetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`, false),
+            createFetch(`https://corsproxy.io/?${encodeURIComponent(url)}`, false),
+            createFetch(`https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`, false),
+            createFetch(`https://api.allorigins.win/get?url=${encodeURIComponent(url)}`, true)
+        ];
+
+        try {
+            return await Promise.race([
+                Promise.any(promises),
+                new Promise((_, reject) => setTimeout(() => reject(new Error("Strict Timeout 3s")), 3000))
+            ]);
+        } catch (e) {
+            console.error("All CORS proxies failed or timed out for text URL:", url, e);
+            throw new Error("All CORS proxies failed or timed out");
+        }
+    }
+
     async function loadRealStockData() {
         const symbols = {
             kospi: '^KS11',
@@ -2311,51 +2402,93 @@ document.addEventListener("DOMContentLoaded", () => {
     // 14. 실시간 주식 티커 검색 기능 (모의 데이터 연동)
     const tickerMockData = {
         nasdaq: [
-            { symbol: 'AAPL', name: 'Apple Inc.' },
-            { symbol: 'TSLA', name: 'Tesla Inc.' },
-            { symbol: 'MSFT', name: 'Microsoft Corp.' },
-            { symbol: 'NVDA', name: 'NVIDIA Corp.' },
-            { symbol: 'GOOGL', name: 'Alphabet Inc.' },
-            { symbol: 'AMZN', name: 'Amazon.com Inc.' },
-            { symbol: 'PLTR', name: 'Palantir Technologies Inc.' },
-            { symbol: 'META', name: 'Meta Platforms, Inc.' },
-            { symbol: 'NFLX', name: 'Netflix, Inc.' }
+            { symbol: 'AAPL', name: 'Apple Inc.', type: 'stock' },
+            { symbol: 'TSLA', name: 'Tesla Inc.', type: 'stock' },
+            { symbol: 'MSFT', name: 'Microsoft Corp.', type: 'stock' },
+            { symbol: 'NVDA', name: 'NVIDIA Corp.', type: 'stock' },
+            { symbol: 'GOOGL', name: 'Alphabet Inc.', type: 'stock' },
+            { symbol: 'AMZN', name: 'Amazon.com Inc.', type: 'stock' },
+            { symbol: 'PLTR', name: 'Palantir Technologies Inc.', type: 'stock' },
+            { symbol: 'META', name: 'Meta Platforms, Inc.', type: 'stock' },
+            { symbol: 'NFLX', name: 'Netflix, Inc.', type: 'stock' },
+            { symbol: 'QQQ', name: 'Invesco QQQ Trust (QQQ)', type: 'etf' },
+            { symbol: 'TQQQ', name: 'ProShares UltraPro QQQ (TQQQ)', type: 'etf' },
+            { symbol: 'SQQQ', name: 'ProShares UltraPro Short QQQ (SQQQ)', type: 'etf' },
+            { symbol: 'SOXX', name: 'iShares Semiconductor ETF (SOXX)', type: 'etf' },
+            { symbol: 'QYLD', name: 'Global X NASDAQ 100 Covered Call ETF (QYLD)', type: 'etf' }
         ],
         nyse: [
-            { symbol: 'PLTR', name: 'Palantir Technologies Inc.' },
-            { symbol: 'TSM', name: 'Taiwan Semiconductor Manufacturing Co.' },
-            { symbol: 'BRK-B', name: 'Berkshire Hathaway Inc.' },
-            { symbol: 'JPM', name: 'JPMorgan Chase & Co.' },
-            { symbol: 'WMT', name: 'Walmart Inc.' },
-            { symbol: 'XOM', name: 'Exxon Mobil Corp.' },
-            { symbol: 'DIS', name: 'The Walt Disney Co.' }
+            { symbol: 'PLTR', name: 'Palantir Technologies Inc.', type: 'stock' },
+            { symbol: 'TSM', name: 'Taiwan Semiconductor Manufacturing Co.', type: 'stock' },
+            { symbol: 'BRK-B', name: 'Berkshire Hathaway Inc.', type: 'stock' },
+            { symbol: 'JPM', name: 'JPMorgan Chase & Co.', type: 'stock' },
+            { symbol: 'WMT', name: 'Walmart Inc.', type: 'stock' },
+            { symbol: 'XOM', name: 'Exxon Mobil Corp.', type: 'stock' },
+            { symbol: 'DIS', name: 'The Walt Disney Co.', type: 'stock' },
+            { symbol: 'SPY', name: 'SPDR S&P 500 ETF Trust (SPY)', type: 'etf' },
+            { symbol: 'VOO', name: 'Vanguard S&P 500 ETF (VOO)', type: 'etf' },
+            { symbol: 'IVV', name: 'iShares Core S&P 500 ETF (IVV)', type: 'etf' },
+            { symbol: 'DIA', name: 'SPDR Dow Jones Industrial Average ETF Trust (DIA)', type: 'etf' },
+            { symbol: 'IWM', name: 'iShares Russell 2000 ETF (IWM)', type: 'etf' },
+            { symbol: 'JEPI', name: 'JPMorgan Equity Premium Income ETF (JEPI)', type: 'etf' },
+            { symbol: 'SCHD', name: 'Schwab U.S. Dividend Equity ETF (SCHD)', type: 'etf' }
         ],
         kospi: [
-            { symbol: '005930', name: '삼성전자' },
-            { symbol: '000660', name: 'SK하이닉스' },
-            { symbol: '373220', name: 'LG에너지솔루션' },
-            { symbol: '207940', name: '삼성바이오로직스' },
-            { symbol: '005380', name: '현대차' },
-            { symbol: '000270', name: '기아' },
-            { symbol: '005490', name: 'POSCO홀딩스' },
-            { symbol: '035420', name: 'NAVER' }
+            { symbol: '005930', name: '삼성전자', type: 'stock' },
+            { symbol: '000660', name: 'SK하이닉스', type: 'stock' },
+            { symbol: '373220', name: 'LG에너지솔루션', type: 'stock' },
+            { symbol: '207940', name: '삼성바이오로직스', type: 'stock' },
+            { symbol: '005380', name: '현대차', type: 'stock' },
+            { symbol: '000270', name: '기아', type: 'stock' },
+            { symbol: '005490', name: 'POSCO홀딩스', type: 'stock' },
+            { symbol: '035420', name: 'NAVER', type: 'stock' },
+            { symbol: '069500', name: 'KODEX 200', type: 'etf' },
+            { symbol: '360750', name: 'TIGER 미국S&P500', type: 'etf' },
+            { symbol: '122630', name: 'KODEX 레버리지', type: 'etf' },
+            { symbol: '252670', name: 'KODEX 200선물인버스2X', type: 'etf' },
+            { symbol: '133690', name: 'TIGER 미국나스닥100', type: 'etf' },
+            { symbol: '453810', name: 'ACE 미국S&P500', type: 'etf' }
         ],
         kosdaq: [
-            { symbol: '247540', name: '에코프로비엠' },
-            { symbol: '086520', name: '에코프로' },
-            { symbol: '028300', name: 'HLB' },
-            { symbol: '068760', name: '셀트리온제약' },
-            { symbol: '198440', name: '심텍' },
-            { symbol: '293490', name: '카카오게임즈' }
+            { symbol: '247540', name: '에코프로비엠', type: 'stock' },
+            { symbol: '086520', name: '에코프로', type: 'stock' },
+            { symbol: '028300', name: 'HLB', type: 'stock' },
+            { symbol: '068760', name: '셀트리온제약', type: 'stock' },
+            { symbol: '198440', name: '심텍', type: 'stock' },
+            { symbol: '293490', name: '카카오게임즈', type: 'stock' },
+            { symbol: '233740', name: 'KODEX 코스닥150레버리지', type: 'etf' },
+            { symbol: '229200', name: 'KODEX 코스닥150', type: 'etf' },
+            { symbol: '250780', name: 'TIGER 코스닥150선물인버스', type: 'etf' },
+            { symbol: '278530', name: 'KODEX 코스닥150선물인버스', type: 'etf' },
+            { symbol: '391230', name: 'TIGER 코스닥150레버리지', type: 'etf' }
         ],
         japan: [
-            { symbol: '7203', name: '도요타 (Toyota)' },
-            { symbol: '9984', name: '소프트뱅크 (SoftBank)' },
-            { symbol: '6861', name: '키엔스 (Keyence)' },
-            { symbol: '6758', name: '소니 (Sony)' },
-            { symbol: '8306', name: '미쓰비시 UFJ' },
-            { symbol: '9983', name: '패스트 리테일링 (Fast Retailing)' },
-            { symbol: '8035', name: '도쿄 일렉트론 (Tokyo Electron)' }
+            { symbol: '7203', name: '도요타 (Toyota)', type: 'stock' },
+            { symbol: '9984', name: '소프트뱅크 (SoftBank)', type: 'stock' },
+            { symbol: '6861', name: '키엔스 (Keyence)', type: 'stock' },
+            { symbol: '6758', name: '소니 (Sony)', type: 'stock' },
+            { symbol: '8306', name: '미쓰비시 UFJ', type: 'stock' },
+            { symbol: '9983', name: '패스트 리테일링 (Fast Retailing)', type: 'stock' },
+            { symbol: '8035', name: '도쿄 일렉트론 (Tokyo Electron)', type: 'stock' },
+            { symbol: '7974', name: '닌텐도 (Nintendo)', type: 'stock' },
+            { symbol: '6594', name: '니덱 (Nidec)', type: 'stock' },
+            { symbol: '7267', name: '혼다 (Honda)', type: 'stock' },
+            { symbol: '6981', name: '무라타 제작소 (Murata)', type: 'stock' },
+            { symbol: '6752', name: '파나소닉 (Panasonic)', type: 'stock' },
+            { symbol: '7751', name: '캐논 (Canon)', type: 'stock' },
+            { symbol: '8001', name: '이토추 상사 (Itochu)', type: 'stock' },
+            { symbol: '8031', name: '미쓰이 물산 (Mitsui)', type: 'stock' },
+            { symbol: '4502', name: '다케다 제약 (Takeda)', type: 'stock' },
+            { symbol: '4568', name: '다이이치 산쿄 (Daiichi Sankyo)', type: 'stock' },
+            { symbol: '4063', name: '신에츠 화학 (Shin-Etsu)', type: 'stock' },
+            { symbol: '9432', name: 'NTT (Nippon Telegraph and Telephone)', type: 'stock' },
+            { symbol: '6902', name: '덴소 (Denso)', type: 'stock' },
+            { symbol: '8058', name: '미쓰비시 상사 (Mitsubishi Corp)', type: 'stock' },
+            { symbol: '1306', name: 'NEXT FUNDS TOPIX ETF (1306)', type: 'etf' },
+            { symbol: '1321', name: 'NEXT FUNDS Nikkei 225 ETF (1321)', type: 'etf' },
+            { symbol: '1329', name: 'iShares Core Nikkei 225 ETF (1329)', type: 'etf' },
+            { symbol: '1591', name: 'NEXT FUNDS JPX-Nikkei 400 ETF (1591)', type: 'etf' },
+            { symbol: '1489', name: 'NEXT FUNDS Nikkei 225 High Dividend 50 ETF (1489)', type: 'etf' }
         ]
     };
 
@@ -2470,14 +2603,21 @@ document.addEventListener("DOMContentLoaded", () => {
             const query = input.value.trim();
             if (query.length === 0) return;
 
-            // 현재 선택된 거래소의 로컬 종목 데이터만 검색 대상으로 설정
+            // 현재 선택된 거래소의 로컬 종목 데이터만 검색 대상으로 설정 (주식/ETF 선택 반영)
             const allLocalData = [];
             const localList = tickerMockData[currentExchange] || [];
+            const isEtfChecked = document.getElementById('asset-etf').checked;
+
             localList.forEach(item => {
+                const itemType = item.type || 'stock';
+                if (isEtfChecked && itemType !== 'etf') return;
+                if (!isEtfChecked && itemType !== 'stock') return;
+
                 allLocalData.push({
                     symbol: item.symbol,
                     name: item.name,
-                    exchange: currentExchange
+                    exchange: currentExchange,
+                    type: itemType
                 });
             });
 
@@ -2653,15 +2793,27 @@ document.addEventListener("DOMContentLoaded", () => {
 
         async function fetchAutocompleteSuggestions(query) {
             if (!query) return [];
-            const url = `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(query)}&quotesCount=10&newsCount=0`;
+            const url = `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(query)}&quotesCount=20&newsCount=0`;
             try {
                 const data = await fetchWithProxyFallback(url);
                 if (data && data.quotes) {
-                    return data.quotes.map(q => ({
-                        symbol: q.symbol,
-                        name: q.longname || q.shortname || q.symbol,
-                        apiExchange: q.exchange
-                    }));
+                    const isEtfChecked = document.getElementById('asset-etf').checked;
+                    return data.quotes
+                        .filter(q => {
+                            if (!q.quoteType) return false;
+                            const qt = q.quoteType.toUpperCase();
+                            if (isEtfChecked) {
+                                return qt === 'ETF' || qt === 'MUTUALFUND';
+                            } else {
+                                return qt === 'EQUITY';
+                            }
+                        })
+                        .map(q => ({
+                            symbol: q.symbol,
+                            name: q.longname || q.shortname || q.symbol,
+                            apiExchange: q.exchange,
+                            type: q.quoteType
+                        }));
                 }
             } catch (err) {
                 console.warn("Failed to fetch autocomplete from Yahoo Finance:", err);
@@ -2680,14 +2832,21 @@ document.addEventListener("DOMContentLoaded", () => {
             }
             resetAutocompleteHideTimer();
 
-            // 현재 선택된 거래소의 로컬 종목 데이터만 필터링 대상으로 설정
+            // 현재 선택된 거래소의 로컬 종목 데이터만 필터링 대상으로 설정 (주식/ETF 선택 반영)
             const allLocalData = [];
             const localList = tickerMockData[currentExchange] || [];
+            const isEtfChecked = document.getElementById('asset-etf').checked;
+
             localList.forEach(item => {
+                const itemType = item.type || 'stock';
+                if (isEtfChecked && itemType !== 'etf') return;
+                if (!isEtfChecked && itemType !== 'stock') return;
+
                 allLocalData.push({
                     symbol: item.symbol,
                     name: item.name,
-                    exchange: currentExchange
+                    exchange: currentExchange,
+                    type: itemType
                 });
             });
             
@@ -3084,17 +3243,134 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     // 종목에 알맞는 관련 뉴스 3가지 생성 및 렌더러
-    function renderRelatedNews(symbol, name) {
+    function formatTimeAgo(unixTimestamp) {
+        if (!unixTimestamp) return '최근';
+        const diffMs = Date.now() - (unixTimestamp * 1000);
+        const diffMins = Math.floor(diffMs / 60000);
+        if (diffMins < 60) return `${diffMins}분 전`;
+        const diffHours = Math.floor(diffMins / 60);
+        if (diffHours < 24) return `${diffHours}시간 전`;
+        const diffDays = Math.floor(diffHours / 24);
+        return `${diffDays}일 전`;
+    }
+
+    // 종목에 알맞는 관련 뉴스 3가지 생성 및 렌더러 (실시간 야후 파이낸스 뉴스 연동)
+    // 종목에 알맞는 관련 뉴스 3가지 생성 및 렌더러 (실시간 야후 파이낸스 뉴스 연동 + 구글 뉴스 RSS 보강)
+    async function renderRelatedNews(symbol, name) {
         const detailNewsContainer = document.getElementById('detail-news-container');
         const detailNewsList = document.getElementById('detail-news-list');
         
         if (!detailNewsContainer || !detailNewsList) return;
         
-        let related = (loadedNewsList || []).filter(n => 
-            n.title.includes(name) || n.title.includes(symbol) || 
-            n.summary.includes(name) || n.summary.includes(symbol)
-        );
+        // 1. Yahoo Finance 뉴스 조회용 심볼 포맷팅
+        let yahooSymbol = symbol;
+        const exchange = currentTickerState.exchange;
+        if (exchange === 'kospi') yahooSymbol = symbol + '.KS';
+        else if (exchange === 'kosdaq') yahooSymbol = symbol + '.KQ';
+        else if (exchange === 'japan') yahooSymbol = symbol + '.T';
+
+        let related = [];
         
+        // 2. 실시간 야후 파이낸스 뉴스 가져오기 시도
+        try {
+            const newsUrl = `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(yahooSymbol)}&quotesCount=0&newsCount=8`;
+            const data = await fetchWithProxyFallback(newsUrl);
+            if (data && data.news && data.news.length > 0) {
+                related = data.news.map((item, idx) => ({
+                    title: item.title,
+                    summary: item.summary || item.title,
+                    press: item.publisher || 'Yahoo Finance',
+                    date: formatTimeAgo(item.providerPublishTime),
+                    link: item.link,
+                    importance: 10 - idx
+                }));
+            }
+        } catch (e) {
+            console.warn("Failed to fetch real-time news from Yahoo Finance:", e);
+        }
+
+        // 2.5. 만약 결과가 3개 미만이면, Google News RSS 피드 검색 시도 (CORS 프록시 사용)
+        if (related.length < 3) {
+            try {
+                const query = exchange === 'kospi' || exchange === 'kosdaq' ? `${name} 주식` : name;
+                const rssUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(query)}&hl=ko&gl=KR&ceid=KR:ko`;
+                const xmlText = await fetchTextWithProxyFallback(rssUrl);
+                if (xmlText) {
+                    const parser = new DOMParser();
+                    const xmlDoc = parser.parseFromString(xmlText, "text/xml");
+                    const items = xmlDoc.getElementsByTagName("item");
+                    const googleNews = [];
+                    for (let i = 0; i < items.length && i < 8; i++) {
+                        const item = items[i];
+                        const fullTitle = item.getElementsByTagName("title")[0]?.textContent || "";
+                        const link = item.getElementsByTagName("link")[0]?.textContent || "";
+                        const pubDateStr = item.getElementsByTagName("pubDate")[0]?.textContent || "";
+                        const descHtml = item.getElementsByTagName("description")[0]?.textContent || "";
+
+                        let title = fullTitle;
+                        let press = item.getElementsByTagName("source")[0]?.textContent || "구글 뉴스";
+
+                        // 구글 뉴스 RSS의 경우 제목 끝에 " - 언론사" 가 포함됨
+                        const lastDash = fullTitle.lastIndexOf(" - ");
+                        if (lastDash !== -1) {
+                            title = fullTitle.substring(0, lastDash).trim();
+                            press = fullTitle.substring(lastDash + 3).trim();
+                        }
+
+                        let summary = title;
+                        if (descHtml) {
+                            const tempDiv = document.createElement("div");
+                            tempDiv.innerHTML = descHtml;
+                            const text = tempDiv.textContent || tempDiv.innerText || "";
+                            if (text) {
+                                const cleanText = text.replace(/<[^>]*>/g, '').split('...')[0].trim();
+                                if (cleanText) {
+                                    summary = cleanText.substring(0, 150) + (cleanText.length > 150 ? '...' : '');
+                                }
+                            }
+                        }
+
+                        let date = "최근";
+                        if (pubDateStr) {
+                            const pubDate = new Date(pubDateStr);
+                            if (!isNaN(pubDate.getTime())) {
+                                const diffMs = Date.now() - pubDate.getTime();
+                                const diffMins = Math.floor(diffMs / 60000);
+                                if (diffMins < 60) date = `${diffMins}분 전`;
+                                else {
+                                    const diffHours = Math.floor(diffMins / 60);
+                                    if (diffHours < 24) date = `${diffHours}시간 전`;
+                                    else {
+                                        const diffDays = Math.floor(diffHours / 24);
+                                        date = `${diffDays}일 전`;
+                                    }
+                                }
+                            }
+                        }
+
+                        googleNews.push({
+                            title,
+                            summary,
+                            press,
+                            date,
+                            link,
+                            importance: 8 - i
+                        });
+                    }
+
+                    // 중복 제목 필터링하며 병합
+                    googleNews.forEach(gNews => {
+                        if (related.length < 3 && !related.some(r => r.title.substring(0, 10) === gNews.title.substring(0, 10))) {
+                            related.push(gNews);
+                        }
+                    });
+                }
+            } catch (rssErr) {
+                console.warn("Failed to fetch news from Google News RSS:", rssErr);
+            }
+        }
+
+        // 3. 만약 실시간 뉴스 매칭 결과가 3개 미만이면, 기존 모의 데이터(Mock News)로 보강
         if (related.length < 3) {
             const mockRelated = [
                 {
@@ -3102,21 +3378,24 @@ document.addEventListener("DOMContentLoaded", () => {
                     summary: `업계 소식통에 따르면 ${name}(${symbol})은 최근 공급망 다변화 정책에 따라 글로벌 부품 수급을 안정화하고 마진율을 대폭 개선할 계획인 것으로 전해졌습니다.`,
                     press: '머니투데이',
                     date: '1시간 전',
-                    importance: 9
+                    importance: 9,
+                    link: `https://news.google.com/search?q=${encodeURIComponent(name + ' 영업이익')}&hl=ko&gl=KR&ceid=KR:ko`
                 },
                 {
                     title: `${name} 주가 주요 저항선 돌파... 기관 매수세 유입 지속`,
                     summary: `금융투자업계에 따르면 외국인과 기관이 ${name}의 장기 성장 패러다임과 배당 성향 확대 가능성에 주목하며 매수세를 확대하고 있어 주가가 신고가 랠리를 달성했습니다.`,
                     press: '한국경제',
                     date: '4시간 전',
-                    importance: 8
+                    importance: 8,
+                    link: `https://news.google.com/search?q=${encodeURIComponent(name + ' 주가')}&hl=ko&gl=KR&ceid=KR:ko`
                 },
                 {
                     title: `${name}, 차세대 핵심 기술 실물 특허 공식 취득 발표`,
                     summary: `${name}은 자사 핵심 연구소에서 개발한 고효율 전력 제어 회로 및 친환경 작동 메커니즘 특허를 취득했다고 공시했습니다.`,
                     press: '연합뉴스',
                     date: '1일 전',
-                    importance: 7
+                    importance: 7,
+                    link: `https://news.google.com/search?q=${encodeURIComponent(name + ' 특허')}&hl=ko&gl=KR&ceid=KR:ko`
                 }
             ];
             related = [...related, ...mockRelated];
@@ -3127,7 +3406,8 @@ document.addEventListener("DOMContentLoaded", () => {
         
         let html = '';
         top3.forEach(news => {
-            const newsLink = news.link || `https://search.naver.com/search.naver?where=news&query=${encodeURIComponent(name + " " + news.title)}`;
+            // 모의 뉴스 또는 link가 없는 경우 Google News 검색으로 연결 (뉴스 전용 검색이므로 정확한 최신 뉴스 노출)
+            const newsLink = news.link || `https://news.google.com/search?q=${encodeURIComponent(name)}&hl=ko&gl=KR&ceid=KR:ko`;
             html += `
                 <div class="naver-news-card" style="padding: 14px; margin: 0; background: rgba(255,255,255,0.01); border: 1px solid rgba(255,255,255,0.04); cursor: pointer;" onclick="window.open('${newsLink}', '_blank')">
                     <div>
@@ -3923,16 +4203,30 @@ document.addEventListener("DOMContentLoaded", () => {
             const totalKrwVal = basePrice * item.quantity * krwRate;
 
             html += `
-                <div class="portfolio-item" data-index="${index}">
-                    <div class="portfolio-item-info">
-                        <span class="portfolio-item-title">${item.name} (${item.symbol})</span>
-                        <span class="portfolio-item-sub">${item.exchange.toUpperCase()} | 현재가: ${formatNumber(price, currency === 'KRW' || currency === 'JPY' ? 0 : 2)} ${currency}</span>
+                <div class="portfolio-item" data-index="${index}" style="display: grid; grid-template-columns: 1.4fr 1.2fr 0.4fr; align-items: center; gap: 16px; padding: 14px 18px; background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 12px; margin-bottom: 12px;">
+                    <!-- 1열: 종목 정보 (4행 구성) -->
+                    <div class="portfolio-col-info" style="display: flex; flex-direction: column; gap: 4px; min-width: 0; align-items: flex-start; text-align: left;">
+                        <span class="portfolio-item-name" style="font-size: 13.5px; font-weight: 700; color: var(--text-primary); display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%;">${item.name}</span>
+                        <span class="portfolio-item-symbol" style="font-size: 11px; color: var(--text-muted); display: block;">(${item.symbol})</span>
+                        <span class="portfolio-item-exchange" style="font-size: 10px; text-transform: uppercase; color: var(--accent); font-weight: bold; background: rgba(56, 189, 248, 0.1); border: 1px solid rgba(56, 189, 248, 0.15); padding: 1px 6px; border-radius: 4px; display: inline-block;">${item.exchange}</span>
+                        <span class="portfolio-item-price-info" style="font-size: 11px; color: var(--text-secondary); display: block;">현재가: ${formatNumber(price, currency === 'KRW' || currency === 'JPY' ? 0 : 2)} ${currency}</span>
                     </div>
-                    <div class="portfolio-item-controls">
-                        <span class="portfolio-item-price" id="portfolio-item-krw-${index}">
-                            평가금액: ${formatNumber(totalKrwVal, 0)} 원
-                        </span>
-                        <input type="number" class="portfolio-qty-input" value="${item.quantity}" min="0" data-index="${index}" style="width: 70px;">
+                    
+                    <!-- 2열: 평가금액 & 수량 조절기 (세로 적층) -->
+                    <div class="portfolio-col-valuation-qty" style="display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center;">
+                        <span class="portfolio-price-label" style="font-size: 11px; color: var(--text-muted); font-weight: 500; display: block;">평가금액</span>
+                        <span class="portfolio-item-price" id="portfolio-item-krw-${index}" style="font-size: 14.5px; font-weight: 700; color: var(--accent); display: block;">${formatNumber(totalKrwVal, 0)}원</span>
+                        
+                        <!-- 커스텀 수량 가감 조절기 -->
+                        <div class="qty-control-wrapper" style="display: inline-flex; align-items: center; gap: 4px; background: rgba(0, 0, 0, 0.35); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 6px; padding: 2px;">
+                            <button type="button" class="qty-btn qty-minus" data-index="${index}" style="background: none; border: none; color: #94a3b8; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 14px; font-weight: bold; border-radius: 4px;">-</button>
+                            <input type="number" class="portfolio-qty-input" value="${item.quantity}" min="0" data-index="${index}" style="width: 42px; text-align: center; border: none; background: transparent; color: var(--text-primary); font-size: 13px; font-weight: bold; outline: none; padding: 0; margin: 0; -webkit-appearance: none; -moz-appearance: textfield;">
+                            <button type="button" class="qty-btn qty-plus" data-index="${index}" style="background: none; border: none; color: #94a3b8; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 14px; font-weight: bold; border-radius: 4px;">+</button>
+                        </div>
+                    </div>
+                    
+                    <!-- 3열: 삭제 버튼 -->
+                    <div class="portfolio-col-delete" style="display: flex; justify-content: flex-end; align-items: center;">
                         <button class="portfolio-delete-btn" data-index="${index}">삭제</button>
                     </div>
                 </div>
@@ -3958,7 +4252,36 @@ document.addEventListener("DOMContentLoaded", () => {
                 const item = portfolio[idx];
                 if (item.cachedPrice) {
                     const totalKrwVal = item.cachedPrice * newQty * item.cachedRate;
-                    document.getElementById(`portfolio-item-krw-${idx}`).innerText = `평가금액: ${formatNumber(totalKrwVal, 0)} 원`;
+                    document.getElementById(`portfolio-item-krw-${idx}`).innerText = `${formatNumber(totalKrwVal, 0)}원`;
+                }
+            });
+        });
+
+        // Bind Plus/Minus button click listeners
+        listEl.querySelectorAll('.qty-minus').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const idx = parseInt(btn.getAttribute('data-index'));
+                const input = listEl.querySelector(`.portfolio-qty-input[data-index="${idx}"]`);
+                if (input) {
+                    let val = parseFloat(input.value) || 0;
+                    if (val > 0) {
+                        val = Math.max(0, val - 1);
+                        input.value = val;
+                        input.dispatchEvent(new Event('input'));
+                    }
+                }
+            });
+        });
+
+        listEl.querySelectorAll('.qty-plus').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const idx = parseInt(btn.getAttribute('data-index'));
+                const input = listEl.querySelector(`.portfolio-qty-input[data-index="${idx}"]`);
+                if (input) {
+                    let val = parseFloat(input.value) || 0;
+                    val = val + 1;
+                    input.value = val;
+                    input.dispatchEvent(new Event('input'));
                 }
             });
         });

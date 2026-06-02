@@ -4,15 +4,89 @@
  */
 
 const MockDataModule = (() => {
-    // generateHistoricalData returns the preloaded real-world historical data
+    let historicalDataCache = null;
+
+    // generateHistoricalData returns the preloaded real-world historical data extended to the current date
     function generateHistoricalData() {
-        if (window.REAL_HISTORICAL_DATA) {
-            return window.REAL_HISTORICAL_DATA;
+        if (!window.REAL_HISTORICAL_DATA) {
+            // Fallback to minimal mock data if real data is not loaded
+            return [
+                { year: 2000.0, label: "2000-01", kospi: 828.4, nasdaq: 3940.4, sp500: 1394.5, reer: 99.0, usdKrw: 1120.0, jpyKrw: 1044.8, eurKrw: 1131.2, cnyKrw: 135.4, jpyValueVsUsd: 98.1, usdValueIndex: 96.9 }
+            ];
         }
-        // Fallback to minimal mock data if real data is not loaded
-        return [
-            { year: 2000.0, label: "2000-01", kospi: 828.4, nasdaq: 3940.4, sp500: 1394.5, reer: 99.0, usdKrw: 1120.0, jpyKrw: 1044.8, eurKrw: 1131.2, cnyKrw: 135.4, jpyValueVsUsd: 98.1, usdValueIndex: 96.9 }
-        ];
+
+        if (historicalDataCache) {
+            return historicalDataCache;
+        }
+
+        // Deep copy the original data array to avoid mutating global data
+        const data = JSON.parse(JSON.stringify(window.REAL_HISTORICAL_DATA));
+        if (data.length === 0) return data;
+
+        const lastItem = data[data.length - 1];
+        const parts = lastItem.label.split('-');
+        if (parts.length === 2) {
+            const lastYear = parseInt(parts[0]);
+            const lastMonth = parseInt(parts[1]);
+
+            // 현재 날짜 구하기 (2026년 6월 기점으로 안전하게 동작)
+            const now = new Date();
+            const currentYear = now.getFullYear();
+            const currentMonth = now.getMonth() + 1; // 1-indexed
+
+            let tempYear = lastYear;
+            let tempMonth = lastMonth;
+            let prevItem = lastItem;
+
+            while (tempYear < currentYear || (tempYear === currentYear && tempMonth < currentMonth)) {
+                tempMonth++;
+                if (tempMonth > 12) {
+                    tempMonth = 1;
+                    tempYear++;
+                }
+                const label = `${tempYear}-${String(tempMonth).padStart(2, '0')}`;
+                const yearFraction = parseFloat((tempYear + (tempMonth - 1) / 12).toFixed(2));
+
+                // 자연스러운 흐름을 위해 직전 데이터 기점 소폭의 변동폭(랜덤워크) 부여
+                const kospi = parseFloat((prevItem.kospi * (1 + (Math.random() - 0.48) * 0.02)).toFixed(1));
+                const nasdaq = parseFloat((prevItem.nasdaq * (1 + (Math.random() - 0.47) * 0.03)).toFixed(1));
+                const sp500 = parseFloat((prevItem.sp500 * (1 + (Math.random() - 0.47) * 0.02)).toFixed(1));
+                const reer = parseFloat((prevItem.reer * (1 + (Math.random() - 0.5) * 0.01)).toFixed(1));
+                
+                // 환율 데이터도 직전 데이터 기반 변동
+                const usdKrw = parseFloat((prevItem.usdKrw * (1 + (Math.random() - 0.5) * 0.015)).toFixed(1));
+                const jpyKrw = parseFloat((prevItem.jpyKrw * (1 + (Math.random() - 0.5) * 0.015)).toFixed(1));
+                const eurKrw = parseFloat((prevItem.eurKrw * (1 + (Math.random() - 0.5) * 0.015)).toFixed(1));
+                const cnyKrw = parseFloat((prevItem.cnyKrw * (1 + (Math.random() - 0.5) * 0.015)).toFixed(1));
+
+                const jpyValueVsUsd = parseFloat((prevItem.jpyValueVsUsd * (1 + (Math.random() - 0.5) * 0.015)).toFixed(1));
+                const usdValueIndex = parseFloat((prevItem.usdValueIndex * (1 + (Math.random() - 0.5) * 0.015)).toFixed(1));
+
+                const newItem = {
+                    year: yearFraction,
+                    label: label,
+                    kospi: kospi,
+                    nasdaq: nasdaq,
+                    sp500: sp500,
+                    reer: reer,
+                    usdKrw: usdKrw,
+                    jpyKrw: jpyKrw,
+                    eurKrw: eurKrw,
+                    cnyKrw: cnyKrw,
+                    jpyValueVsUsd: jpyValueVsUsd,
+                    usdValueIndex: usdValueIndex,
+                    dxy: prevItem.dxy ? parseFloat((prevItem.dxy * (1 + (Math.random() - 0.5) * 0.008)).toFixed(1)) : 104.5,
+                    usdjpy: prevItem.usdjpy ? parseFloat((prevItem.usdjpy * (1 + (Math.random() - 0.5) * 0.01)).toFixed(1)) : 155.0,
+                    eurusd: prevItem.eurusd ? parseFloat((prevItem.eurusd * (1 + (Math.random() - 0.5) * 0.008)).toFixed(3)) : 1.08,
+                    usdcny: prevItem.usdcny ? parseFloat((prevItem.usdcny * (1 + (Math.random() - 0.5) * 0.005)).toFixed(3)) : 7.24
+                };
+                data.push(newItem);
+                prevItem = newItem;
+            }
+        }
+
+        historicalDataCache = data;
+        return data;
     }
 
     // 실시간 지수 상태

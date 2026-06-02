@@ -84,9 +84,16 @@
         <div class="bg-glow-2"></div>
     </div>
 
-    <!-- Notion 스타일 커버 배너 -->
     <div class="logo-cover-banner">
         <img src="Chart_Logo.jpeg" alt="Tori Stock Banner" class="cover-banner-img">
+    </div>
+
+    <!-- 터치 가이드 툴팁 -->
+    <div id="touch-guide-tooltip" class="floating-tooltip" style="display: none; position: fixed; top: 80px; left: 50%; transform: translateX(-50%); z-index: 1000000; text-align: center; font-size: 13px; padding: 10px 20px;">
+        💡 <b>터치 가이드</b><br>
+        1터치: 기본 정보 확인<br>
+        2초 유지: 가격 연속 트래킹<br>
+        2핑거: 화면 확대/축소 및 이동
     </div>
 
     <div class="dashboard-container">
@@ -209,6 +216,14 @@
                         <div class="exchange-option" data-exchange="kosdaq" data-name="코스닥 (KOSDAQ)">코스닥 (KOSDAQ)</div>
                         <div class="exchange-option" data-exchange="japan" data-name="도쿄증권거래소 (TSE)">도쿄증권거래소 (TSE)</div>
                     </div>
+                </div>
+
+                <!-- ETF/개별주식 토글 -->
+                <div class="asset-type-toggle">
+                    <input type="radio" id="asset-stock" name="asset-type" value="stock" checked>
+                    <label for="asset-stock">주식</label>
+                    <input type="radio" id="asset-etf" name="asset-type" value="etf">
+                    <label for="asset-etf">ETF</label>
                 </div>
 
                 <!-- 검색 입력창 및 자동완성 -->
@@ -437,8 +452,8 @@
             <div class="historical-container">
                 <div class="historical-controls-wrapper">
                     <div>
-                        <h2 class="section-title">역사적 통화 가치 및 자산 변동성 (2000년 ~ 현재)</h2>
-                        <p class="historical-description">
+                        <h2 class="section-title" id="historical-section-title">역사적 통화 가치 및 자산 변동성 (2000년 ~ 현재)</h2>
+                        <p class="historical-description" id="historical-section-desc">
                             2000년 닷컴버블부터 <strong>2008~2009년 글로벌 금융위기 최저점</strong>을 지나 현재까지의 자산군 장기 흐름을 시각화합니다.
                             원화의 실질가치(실질실효환율 REER)가 금융위기 당시 어떻게 급락하고 극복했는지 살펴보세요. (2000년 가치 = 100 기준 지수화)
                         </p>
@@ -488,10 +503,10 @@
                     </div>
                     <!-- 현재 고금리 기조 -->
                     <div class="crisis-card" id="crisis-card-2026">
-                        <span class="crisis-year-badge normal">2024 - 현재</span>
+                        <span class="crisis-year-badge normal" id="crisis-current-year-badge">2024 - 현재</span>
                         <div class="crisis-text">
-                            <h4>고금리 장기화 및 엔저 지속</h4>
-                            <p>미국 고금리가 지속되면서 달러화가 초강세를 띄고 있으며, 엔화 가치는 역사적 최저점 수준을 갱신 중(JPY/KRW 860원대 돌입).</p>
+                            <h4 id="crisis-current-title">고금리 장기화 및 엔저 지속</h4>
+                            <p id="crisis-current-desc">미국 고금리가 지속되면서 달러화가 초강세를 띄고 있으며, 엔화 가치는 역사적 최저점 수준을 갱신 중(JPY/KRW 860원대 돌입).</p>
                         </div>
                     </div>
                 </div>
@@ -1204,7 +1219,10 @@
             <!-- 포트폴리오 시뮬레이션 / 분석 영역 -->
             <div class="analysis-section" id="portfolio-analysis-section">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-                    <h4 class="section-title" style="font-size: 16px; margin: 0;">📈 포트폴리오 10개년 백테스팅</h4>
+                    <h4 class="backtest-title">
+                        <span class="backtest-icon-badge">📈</span>
+                        <span class="backtest-title-text">포트폴리오 10개년 백테스팅</span>
+                    </h4>
                     <div class="timeframe-buttons" id="portfolio-backtest-timeframe">
                         <button class="time-btn" data-period="10y">10년</button>
                         <button class="time-btn" data-period="7y">7년</button>

@@ -1255,6 +1255,36 @@ footer a:hover {
     z-index: 101;
 }
 
+.asset-type-toggle {
+    display: flex;
+    align-items: center;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    padding: 4px;
+    gap: 4px;
+}
+
+.asset-type-toggle input[type="radio"] {
+    display: none;
+}
+
+.asset-type-toggle label {
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.asset-type-toggle input[type="radio"]:checked + label {
+    background: rgba(99, 102, 241, 0.2);
+    color: var(--accent);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
 .exchange-dropdown-btn {
     display: flex;
     align-items: center;
@@ -2048,16 +2078,21 @@ footer a:hover {
     border-color: rgba(255, 255, 255, 0.12);
 }
 
-.portfolio-item-info {
+.portfolio-col-info {
     display: flex;
     flex-direction: column;
     gap: 2px;
+    flex: 1.2;
+    min-width: 0;
 }
 
 .portfolio-item-title {
     font-size: 14px;
     font-weight: 600;
     color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .portfolio-item-sub {
@@ -2065,10 +2100,19 @@ footer a:hover {
     color: var(--text-secondary);
 }
 
-.portfolio-item-controls {
+.portfolio-col-price {
     display: flex;
-    align-items: center;
-    gap: 16px;
+    flex-direction: column;
+    align-items: flex-end;
+    justify-content: center;
+    gap: 4px;
+    flex: 1;
+    min-width: 90px;
+}
+
+.portfolio-price-label {
+    font-size: 11px;
+    color: var(--text-muted);
 }
 
 .portfolio-item-price {
@@ -2077,7 +2121,15 @@ footer a:hover {
     font-weight: 600;
     color: var(--accent);
     text-align: right;
-    min-width: 140px;
+}
+
+.portfolio-col-controls {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 12px;
+    flex: 0.8;
+    min-width: 120px;
 }
 
 .portfolio-qty-input {
@@ -2095,6 +2147,18 @@ footer a:hover {
 
 .portfolio-qty-input:focus {
     border-color: var(--accent);
+}
+
+/* Custom Qty Control Buttons styling */
+.qty-btn {
+    transition: background-color 0.2s, color 0.2s;
+}
+.qty-btn:hover {
+    background-color: rgba(255, 255, 255, 0.15) !important;
+    color: var(--text-primary) !important;
+}
+.qty-btn:active {
+    background-color: rgba(255, 255, 255, 0.25) !important;
 }
 
 .portfolio-delete-btn {
@@ -2140,23 +2204,102 @@ footer a:hover {
     margin-top: 16px;
 }
 
+/* 포트폴리오 백테스팅 제목 프리미엄 스타일 */
+.backtest-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 0;
+    font-family: var(--font-heading);
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.backtest-icon-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+    background: linear-gradient(135deg, rgba(0, 242, 254, 0.15), rgba(99, 102, 241, 0.15));
+    border: 1px solid rgba(0, 242, 254, 0.25);
+    font-size: 16px;
+    box-shadow: 0 4px 12px rgba(0, 242, 254, 0.1), inset 0 1px 1px rgba(255, 255, 255, 0.15);
+    flex-shrink: 0;
+}
+
+.backtest-title-text {
+    background: linear-gradient(to right, #f8fafc, var(--accent));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+@media (max-width: 768px) {
+    .backtest-title {
+        font-size: 13px;
+        gap: 8px;
+    }
+    .backtest-icon-badge {
+        width: 28px;
+        height: 28px;
+        border-radius: 8px;
+        font-size: 13px;
+    }
+}
+
+@media (max-width: 480px) {
+    .backtest-title {
+        font-size: 12px;
+        gap: 6px;
+    }
+    .backtest-icon-badge {
+        width: 24px;
+        height: 24px;
+        font-size: 11px;
+    }
+}
+
 /* ==========================================================================
    Tori Stock Premium Visual & Mobile Optimization
    ========================================================================== */
 
 /* Notion-style Cover Banner */
 .logo-cover-banner {
+    position: relative;
     width: 100%;
-    height: 220px;
+    height: 260px;
     overflow: hidden;
-    background: #080b16;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    /* 중심부→가장자리로 검정→사이트 배경색(#080b16)이 아주 부드럽게 페이드 */
+    background: radial-gradient(ellipse 120% 100% at 50% 50%, #000000 0%, rgba(0,0,0,0.85) 30%, rgba(8,11,22,0.6) 60%, #080b16 90%, #080b16 100%);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    /* 칼같은 border-bottom 제거하여 경계선 없음 */
+    border-bottom: none;
+}
+.logo-cover-banner::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    pointer-events: none;
+    /* 상/하/좌/우 모든 방향 부드러운 페이드: 이질감 0의 그라데이션 블렌딩 */
+    background: 
+        linear-gradient(to right, #080b16 0%, transparent 12%, transparent 88%, #080b16 100%),
+        linear-gradient(to bottom, transparent 40%, rgba(8,11,22,0.4) 70%, #080b16 100%),
+        linear-gradient(to top, transparent 85%, rgba(8,11,22,0.5) 95%, #080b16 100%);
 }
 .cover-banner-img {
-    width: 100%;
     height: 100%;
-    object-fit: cover;
-    object-position: center;
+    width: auto;
+    max-width: 100%;
+    object-fit: contain; /* 로고 전체가 모바일이든 데스크톱이든 잘리지 않고 원형 그대로 다 보임 */
+    opacity: 0.95; /* 강인한 인상을 위해 투명도를 높여 선명하게 */
+    filter: drop-shadow(0 0 30px rgba(8, 11, 22, 0.8)); /* 로고 엣지에 미세한 발광 블렌딩 */
 }
 
 /* Vertical Stacking Header */
@@ -2385,11 +2528,16 @@ footer a:hover {
 @media (max-width: 768px) {
     .logo-cover-banner {
         height: auto;
+        min-height: 160px;
         aspect-ratio: 21 / 9;
+        background: radial-gradient(ellipse 130% 100% at 50% 50%, #000000 0%, rgba(0,0,0,0.8) 25%, rgba(8,11,22,0.5) 55%, #080b16 85%, #080b16 100%);
     }
     .cover-banner-img {
+        height: 100%;
+        width: auto;
+        max-width: 100%;
         object-fit: contain;
-        background: #080b16;
+        opacity: 0.95;
     }
     .vertical-header {
         align-items: center;
