@@ -2736,3 +2736,68 @@ footer a:hover {
         overflow-x: hidden !important;
     }
 }
+
+/* ── 구글 연동 및 로그인 관련 CSS ── */
+#google-login-btn {
+    transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+#google-login-btn:hover {
+    background: rgba(0, 242, 254, 0.1) !important;
+    border-color: rgba(0, 242, 254, 0.4) !important;
+    color: var(--accent) !important;
+    box-shadow: 0 0 12px var(--accent-glow);
+    transform: translateY(-1px);
+}
+#google-login-btn.logged-in {
+    background: rgba(16, 185, 129, 0.08) !important;
+    border-color: rgba(16, 185, 129, 0.3) !important;
+    color: var(--bullish) !important;
+}
+#google-login-btn.logged-in:hover {
+    background: rgba(16, 185, 129, 0.15) !important;
+    border-color: rgba(16, 185, 129, 0.5) !important;
+    box-shadow: 0 0 12px var(--bullish-glow);
+}
+
+#google-signin-action-btn:hover {
+    background: #f3f4f6 !important;
+    box-shadow: 0 4px 15px rgba(255, 255, 255, 0.2);
+    transform: translateY(-1px);
+}
+
+#google-sync-now-btn:hover {
+    opacity: 0.95;
+    transform: translateY(-1px);
+    box-shadow: 0 6px 16px var(--accent-glow) !important;
+}
+
+#google-logout-btn:hover {
+    background: rgba(244, 63, 94, 0.15) !important;
+    border-color: rgba(244, 63, 94, 0.3) !important;
+    transform: translateY(-1px);
+}
+
+/* 동기화 스피너 회전 애니메이션 */
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.google-btn-ko:hover {
+    background: #e5e7eb !important;
+}
+
+.google-btn-en:hover {
+    background: #357ae8 !important;
+    border-color: #357ae8 !important;
+}
+
+.footer-link {
+    color: var(--text-muted) !important;
+    text-decoration: none;
+    transition: all 0.25s ease;
+}
+.footer-link:hover {
+    color: var(--accent) !important;
+    text-shadow: 0 0 6px var(--accent-glow);
+}

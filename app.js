@@ -3500,6 +3500,9 @@ document.addEventListener("DOMContentLoaded", () => {
             priceBox.style.display = 'block';
 
             renderDetailChart(currentDetailData, netChange >= 0, period);
+            if (typeof addRecentSearch === 'function') {
+                addRecentSearch(symbol, name, exchange, currentPrice, window.currentDetailCurrency || '');
+            }
             return;
         }
 
@@ -3579,6 +3582,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
             currentDetailData = validData;
             renderDetailChart(validData, netChange >= 0, period);
+            if (typeof addRecentSearch === 'function') {
+                addRecentSearch(symbol, name, exchange, currentPrice, currency);
+            }
 
             const consensusBox = document.getElementById('detail-consensus-box');
             const consensusRating = document.getElementById('consensus-rating');
@@ -4120,6 +4126,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
     function savePortfolio() {
         localStorage.setItem('my_portfolio_items', JSON.stringify(portfolio));
+        if (typeof triggerGoogleDriveSync === 'function') {
+            triggerGoogleDriveSync();
+        }
     }
 
     function addToPortfolio(symbol, name, exchange) {
@@ -4599,4 +4608,332 @@ document.addEventListener("DOMContentLoaded", () => {
         const fgScore = Math.floor(Math.random() * 60) + 20; 
         updateFearGreedGauge(fgScore);
     }, 500);
+
+    // === Recent Searches Logic ===
+    let recentSearches = JSON.parse(localStorage.getItem('recent_searches')) || [];
+    function saveRecentSearches() {
+        localStorage.setItem('recent_searches', JSON.stringify(recentSearches));
+        if (typeof triggerGoogleDriveSync === 'function') {
+            triggerGoogleDriveSync();
+        }
+    }
+    function addRecentSearch(symbol, name, exchange, price = null, currency = '') {
+        if (!symbol) return;
+        // Remove existing to place at front
+        recentSearches = recentSearches.filter(item => item.symbol.toUpperCase() !== symbol.toUpperCase());
+        
+        const searchItem = {
+            symbol: symbol.toUpperCase(),
+            name,
+            exchange,
+            time: new Date().toISOString()
+        };
+        
+        if (price !== null) {
+            searchItem.price = price;
+            searchItem.currency = currency;
+        }
+        
+        recentSearches.unshift(searchItem);
+        // Cap at 10 items
+        if (recentSearches.length > 10) {
+            recentSearches = recentSearches.slice(0, 10);
+        }
+        saveRecentSearches();
+    }
+
+    // === Google OAuth & Google Drive Sync Integration ===
+    // Google Cloud Console에서 웹 애플리케이션용으로 발급받은 OAuth 클라이언트 ID를 기입하세요.
+    const GOOGLE_CLIENT_ID = '1037201246204-pm8p0psomuc2ltn0bvkaffe3ou2i2umk.apps.googleusercontent.com'; // 실제 사용자의 ID에 맞게 수정 가능한 상수
+    let oauthToken = null;
+    let tokenClient = null;
+    let syncPending = false;
+
+    // Modal elements
+    const googleLoginBtn = document.getElementById('google-login-btn');
+    const googleAuthModal = document.getElementById('google-auth-modal');
+    const closeGoogleAuthModalBtn = document.getElementById('close-google-auth-modal-btn');
+    const googleSigninBtns = document.querySelectorAll('.google-signin-btn');
+    
+    const loggedOutState = document.getElementById('google-logged-out-state');
+    const loggedInState = document.getElementById('google-logged-in-state');
+    const userAvatar = document.getElementById('google-user-avatar');
+    const userName = document.getElementById('google-user-name');
+    const userEmail = document.getElementById('google-user-email');
+    
+    const googleBackupStatus = document.getElementById('google-backup-status');
+    const googleBackupTime = document.getElementById('google-backup-time');
+    const googleSyncNowBtn = document.getElementById('google-sync-now-btn');
+    const googleLogoutBtn = document.getElementById('google-logout-btn');
+
+    // UI toggle based on login status
+    function updateGoogleAuthUI() {
+        const sessionToken = sessionStorage.getItem('google_oauth_token');
+        const userProfile = JSON.parse(sessionStorage.getItem('google_user_profile') || 'null');
+        
+        if (sessionToken && userProfile) {
+            oauthToken = sessionToken;
+            
+            // Logged in UI
+            if (loggedOutState) loggedOutState.style.display = 'none';
+            if (loggedInState) loggedInState.style.display = 'block';
+            
+            if (googleLoginBtn) {
+                googleLoginBtn.classList.add('logged-in');
+                googleLoginBtn.style.padding = '4px 12px';
+                googleLoginBtn.innerHTML = `
+                    <img src="${userProfile.picture || ''}" alt="Avatar" style="width: 20px; height: 20px; border-radius: 50%; border: 1px solid var(--accent); flex-shrink: 0; display: block;">
+                    <span style="font-size: 12.5px; font-weight: 600; color: var(--text-primary); max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${userProfile.name || 'Google 계정'}</span>
+                `;
+            }
+            
+            if (userAvatar) userAvatar.src = userProfile.picture || '';
+            if (userName) userName.innerText = userProfile.name || 'Google User';
+            if (userEmail) userEmail.innerText = userProfile.email || '';
+            
+            const lastBackup = localStorage.getItem('google_drive_last_backup') || '없음';
+            if (googleBackupTime) googleBackupTime.innerText = `마지막 백업 일시: ${lastBackup}`;
+        } else {
+            oauthToken = null;
+            
+            // Logged out UI
+            if (loggedOutState) loggedOutState.style.display = 'block';
+            if (loggedInState) loggedInState.style.display = 'none';
+            
+            if (googleLoginBtn) {
+                googleLoginBtn.classList.remove('logged-in');
+                googleLoginBtn.style.padding = '';
+                googleLoginBtn.innerHTML = `👤 로그인`;
+            }
+        }
+    }
+
+    // Modal show/hide
+    if (googleLoginBtn && googleAuthModal) {
+        googleLoginBtn.addEventListener('click', () => {
+            googleAuthModal.classList.add('active');
+        });
+    }
+    if (closeGoogleAuthModalBtn && googleAuthModal) {
+        closeGoogleAuthModalBtn.addEventListener('click', () => {
+            googleAuthModal.classList.remove('active');
+        });
+    }
+    window.addEventListener('click', (e) => {
+        if (e.target === googleAuthModal) {
+            googleAuthModal.classList.remove('active');
+        }
+    });
+
+    // Initialize GIS Client
+    function initGIS(clientId) {
+        if (!clientId) return;
+        try {
+            tokenClient = google.accounts.oauth2.initTokenClient({
+                client_id: clientId,
+                scope: 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email',
+                callback: async (resp) => {
+                    if (resp.error) {
+                        alert(`구글 로그인 실패: ${resp.error_description || resp.error}`);
+                        return;
+                    }
+                    if (resp.access_token) {
+                        oauthToken = resp.access_token;
+                        sessionStorage.setItem('google_oauth_token', oauthToken);
+                        
+                        // Fetch user profile
+                        await fetchUserProfile(oauthToken);
+                        updateGoogleAuthUI();
+                        
+                        // Auto-sync / Restore after successful login
+                        await handleGoogleLoginSync();
+                    }
+                }
+            });
+        } catch (e) {
+            console.error("Failed to initialize Google GIS:", e);
+        }
+    }
+
+    async function fetchUserProfile(token) {
+        try {
+            const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (res.ok) {
+                const profile = await res.json();
+                sessionStorage.setItem('google_user_profile', JSON.stringify(profile));
+            }
+        } catch (e) {
+            console.error("Failed to fetch Google profile:", e);
+        }
+    }
+
+    // Google Sign in trigger
+    googleSigninBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+            if (!GOOGLE_CLIENT_ID || GOOGLE_CLIENT_ID.startsWith('YOUR_GOOGLE_CLIENT_ID')) {
+                alert('app.js 파일 상단에 구글 OAuth 2.0 Client ID를 설정해 주세요.');
+                return;
+            }
+            initGIS(GOOGLE_CLIENT_ID);
+            if (tokenClient) {
+                tokenClient.requestAccessToken({ prompt: 'consent' });
+            } else {
+                alert('Google Client 초기화에 실패했습니다. Client ID가 올바른지 확인해 주세요.');
+            }
+        });
+    });
+
+    // Google Logout
+    if (googleLogoutBtn) {
+        googleLogoutBtn.addEventListener('click', () => {
+            if (oauthToken) {
+                try {
+                    google.accounts.oauth2.revokeToken(oauthToken, () => {});
+                } catch(e) {}
+            }
+            sessionStorage.removeItem('google_oauth_token');
+            sessionStorage.removeItem('google_user_profile');
+            localStorage.removeItem('google_drive_last_backup');
+            oauthToken = null;
+            updateGoogleAuthUI();
+            alert('구글 계정 연동이 해제되었습니다.');
+        });
+    }
+
+    // Google Apps Script API URL
+    const GAS_API_URL = "https://script.google.com/macros/s/AKfycbyZRGDKcGh_c5YQqzqMbsaoDrTayXbGzTSBkHvbbcpxLogzKcV2-5INb5CfquWQnaHs/exec";
+
+    // Google Apps Script 연동 데이터 복원 및 초기화 흐름
+    async function handleGoogleLoginSync() {
+        if (!oauthToken) return;
+        
+        if (googleBackupStatus) googleBackupStatus.innerText = "연동 확인 중...";
+        const spinner = document.querySelector('.sync-spinner');
+        if (spinner) spinner.style.display = 'inline-block';
+        
+        try {
+            // a) 파일 초기화 (GAS init API)
+            const initUrl = `${GAS_API_URL}?action=init&access_token=${oauthToken}`;
+            const initRes = await fetch(initUrl);
+            if (!initRes.ok) throw new Error("GAS init API failed");
+            const initData = await initRes.json();
+            if (!initData.ok) throw new Error(initData.error || "GAS init failed");
+            
+            // d) 구글 드라이브에서 정보를 불러와서 표시
+            const getUrl = `${GAS_API_URL}?action=get&access_token=${oauthToken}`;
+            const getRes = await fetch(getUrl);
+            if (!getRes.ok) throw new Error("GAS get API failed");
+            const getData = await getRes.json();
+            
+            if (getData.ok && getData.data && getData.data.data && 
+                ((getData.data.data.portfolio && getData.data.data.portfolio.length > 0) || 
+                 (getData.data.data.recentSearches && getData.data.data.recentSearches.length > 0))
+            ) {
+                // 기존 연동 유저: 데이터 복원 후 표시
+                const backupData = getData.data.data;
+                
+                if (backupData.portfolio) {
+                    portfolio = backupData.portfolio;
+                    localStorage.setItem('my_portfolio_items', JSON.stringify(portfolio));
+                }
+                if (backupData.recentSearches) {
+                    recentSearches = backupData.recentSearches;
+                    localStorage.setItem('recent_searches', JSON.stringify(recentSearches));
+                }
+                
+                // UI 갱신
+                if (typeof renderPortfolioModal === 'function') {
+                    await renderPortfolioModal();
+                }
+                
+                const timeStr = getData.data.updatedAt ? new Date(getData.data.updatedAt).toLocaleString('ko-KR') : new Date().toLocaleString('ko-KR');
+                localStorage.setItem('google_drive_last_backup', timeStr);
+                if (googleBackupTime) googleBackupTime.innerText = `마지막 동기화 일시: ${timeStr}`;
+                if (googleBackupStatus) googleBackupStatus.innerText = "동기화 완료";
+                
+                console.log("구글 드라이브로부터 포트폴리오 및 최근 검색 데이터 복원 성공");
+            } else {
+                // 첫 로그인: 현재 기기의 로컬 데이터를 구글 드라이브에 최초 백업
+                await triggerGoogleDriveSync(false);
+                console.log("최초 로그인으로 인한 로컬 데이터 구글 드라이브 백업 완료");
+            }
+        } catch (e) {
+            console.error("GAS sync initialization failed:", e);
+            if (googleBackupStatus) googleBackupStatus.innerText = "동기화 실패";
+        } finally {
+            if (spinner) spinner.style.display = 'none';
+        }
+    }
+
+    // Google Apps Script API: Backup (set)
+    async function triggerGoogleDriveSync(manual = false) {
+        if (!oauthToken) {
+            if (manual) alert('구글 계정이 연동되어 있지 않습니다.');
+            return;
+        }
+        
+        if (syncPending) return;
+        syncPending = true;
+        
+        if (googleBackupStatus) googleBackupStatus.innerText = "동기화 진행 중...";
+        const spinner = document.querySelector('.sync-spinner');
+        const btnText = document.querySelector('.sync-btn-text');
+        if (spinner) spinner.style.display = 'inline-block';
+        if (btnText) btnText.innerText = " 동기화 중...";
+        
+        try {
+            // Backup JSON payload
+            const payload = {
+                data: {
+                    portfolio: JSON.parse(localStorage.getItem('my_portfolio_items')) || [],
+                    recentSearches: JSON.parse(localStorage.getItem('recent_searches')) || []
+                }
+            };
+            
+            const setUrl = `${GAS_API_URL}?action=set&access_token=${oauthToken}`;
+            const uploadRes = await fetch(setUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(payload)
+            });
+            
+            if (!uploadRes.ok) throw new Error("GAS set API failed");
+            const uploadData = await uploadRes.json();
+            if (!uploadData.ok) throw new Error(uploadData.error || "GAS set failed");
+            
+            const timeStr = new Date().toLocaleString('ko-KR');
+            localStorage.setItem('google_drive_last_backup', timeStr);
+            
+            if (googleBackupStatus) googleBackupStatus.innerText = "동기화 완료";
+            if (googleBackupTime) googleBackupTime.innerText = `마지막 백업 일시: ${timeStr}`;
+            if (manual) alert('구글 드라이브 동기화 성공!');
+        } catch (e) {
+            console.error("Google Drive sync failed:", e);
+            if (googleBackupStatus) googleBackupStatus.innerText = "동기화 실패";
+            if (manual) alert('구글 드라이브 동기화 실패. 다시 로그인해 보시거나 클라이언트 ID를 확인해 주세요.');
+        } finally {
+            syncPending = false;
+            if (spinner) spinner.style.display = 'none';
+            if (btnText) btnText.innerText = "🔄 지금 구글 드라이브로 동기화";
+        }
+    }
+
+    if (googleSyncNowBtn) {
+        googleSyncNowBtn.addEventListener('click', () => {
+            triggerGoogleDriveSync(true);
+        });
+    }
+
+    // Initialize UI on load
+    updateGoogleAuthUI();
+    if (GOOGLE_CLIENT_ID && !GOOGLE_CLIENT_ID.startsWith('YOUR_GOOGLE_CLIENT_ID')) {
+        initGIS(GOOGLE_CLIENT_ID);
+        if (sessionStorage.getItem('google_oauth_token')) {
+            handleGoogleLoginSync();
+        }
+    }
 });
