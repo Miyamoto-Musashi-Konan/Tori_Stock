@@ -3840,6 +3840,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
     function savePortfolio() {
         localStorage.setItem('my_portfolio_items', JSON.stringify(portfolio));
+        if (typeof triggerGoogleDriveSync === 'function') {
+            triggerGoogleDriveSync();
+        }
     }
 
     function addToPortfolio(symbol, name, exchange) {
@@ -4276,4 +4279,475 @@ document.addEventListener("DOMContentLoaded", () => {
         const fgScore = Math.floor(Math.random() * 60) + 20; 
         updateFearGreedGauge(fgScore);
     }, 500);
+
+    // === Recent Searches Logic ===
+    let recentSearches = JSON.parse(localStorage.getItem('recent_searches')) || [];
+    function saveRecentSearches() {
+        localStorage.setItem('recent_searches', JSON.stringify(recentSearches));
+        if (typeof triggerGoogleDriveSync === 'function') {
+            triggerGoogleDriveSync();
+        }
+    }
+    function addRecentSearch(symbol, name, exchange, price = null, currency = '') {
+        if (!symbol) return;
+        recentSearches = recentSearches.filter(item => item.symbol.toUpperCase() !== symbol.toUpperCase());
+        
+        const searchItem = {
+            symbol: symbol.toUpperCase(),
+            name,
+            exchange,
+            time: new Date().toISOString()
+        };
+        
+        if (price !== null) {
+            searchItem.price = price;
+            searchItem.currency = currency;
+        }
+        
+        recentSearches.unshift(searchItem);
+        if (recentSearches.length > 10) {
+            recentSearches = recentSearches.slice(0, 10);
+        }
+        saveRecentSearches();
+    }
+
+    // === Google OAuth & Google Drive Sync Integration ===
+    const GOOGLE_CLIENT_ID = '1037201246204-pm8p0psomuc2ltn0bvkaffe3ou2i2umk.apps.googleusercontent.com'; // OAuth Client ID
+    let oauthToken = null;
+    let tokenClient = null;
+    let syncPending = false;
+
+    // Check if mock mode is enabled via URL query parameter
+    const isMockGoogle = new URLSearchParams(window.location.search).get('mock_google') === 'true';
+    const MOCK_DRIVE_STORAGE_KEY = 'mock_google_drive_file';
+
+    // Mock GIS for testing (Handled directly inside initGIS to avoid async script loading race condition)
+
+    // Modal elements
+    const googleLoginBtn = document.getElementById('google-login-btn');
+    const googleAuthModal = document.getElementById('google-auth-modal');
+    const closeGoogleAuthModalBtn = document.getElementById('close-google-auth-modal-btn');
+    const googleSigninBtns = document.querySelectorAll('.google-signin-btn');
+    
+    const loggedOutState = document.getElementById('google-logged-out-state');
+    const loggedInState = document.getElementById('google-logged-in-state');
+    const userAvatar = document.getElementById('google-user-avatar');
+    const userName = document.getElementById('google-user-name');
+    const userEmail = document.getElementById('google-user-email');
+    
+    const googleBackupStatus = document.getElementById('google-backup-status');
+    const googleBackupTime = document.getElementById('google-backup-time');
+    const googleSyncNowBtn = document.getElementById('google-sync-now-btn');
+    const googleLogoutBtn = document.getElementById('google-logout-btn');
+
+    // UI toggle based on login status
+    function updateGoogleAuthUI() {
+        const sessionToken = sessionStorage.getItem('google_oauth_token');
+        const userProfile = JSON.parse(sessionStorage.getItem('google_user_profile') || 'null');
+        
+        if (sessionToken && userProfile) {
+            oauthToken = sessionToken;
+            
+            // Logged in UI
+            if (loggedOutState) loggedOutState.style.display = 'none';
+            if (loggedInState) loggedInState.style.display = 'block';
+            
+            if (googleLoginBtn) {
+                googleLoginBtn.classList.add('logged-in');
+                googleLoginBtn.style.padding = '4px 12px';
+                googleLoginBtn.innerHTML = `
+                    <img src="${userProfile.picture || ''}" alt="Avatar" style="width: 20px; height: 20px; border-radius: 50%; border: 1px solid var(--accent); flex-shrink: 0; display: block;">
+                    <span style="font-size: 12.5px; font-weight: 600; color: var(--text-primary); max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${userProfile.name || 'Google 계정'}</span>
+                `;
+            }
+            
+            if (userAvatar) userAvatar.src = userProfile.picture || '';
+            if (userName) userName.innerText = userProfile.name || 'Google User';
+            if (userEmail) userEmail.innerText = userProfile.email || '';
+            
+            const lastBackup = localStorage.getItem('google_drive_last_backup') || '없음';
+            if (googleBackupTime) googleBackupTime.innerText = `마지막 동기화 일시: ${lastBackup}`;
+        } else {
+            oauthToken = null;
+            
+            // Logged out UI
+            if (loggedOutState) loggedOutState.style.display = 'block';
+            if (loggedInState) loggedInState.style.display = 'none';
+            
+            if (googleLoginBtn) {
+                googleLoginBtn.classList.remove('logged-in');
+                googleLoginBtn.style.padding = '';
+                googleLoginBtn.innerHTML = `👤 로그인`;
+            }
+        }
+    }
+
+    // Modal show/hide
+    if (googleLoginBtn && googleAuthModal) {
+        googleLoginBtn.addEventListener('click', () => {
+            googleAuthModal.classList.add('active');
+        });
+    }
+    if (closeGoogleAuthModalBtn && googleAuthModal) {
+        closeGoogleAuthModalBtn.addEventListener('click', () => {
+            googleAuthModal.classList.remove('active');
+        });
+    }
+    window.addEventListener('click', (e) => {
+        if (e.target === googleAuthModal) {
+            googleAuthModal.classList.remove('active');
+        }
+    });
+
+    // Initialize GIS Client
+    function initGIS(clientId) {
+        if (!clientId && !isMockGoogle) return;
+        try {
+            const callbackFn = async (resp) => {
+                if (resp.error) {
+                    alert(`구글 로그인 실패: ${resp.error_description || resp.error}`);
+                    return;
+                }
+                if (resp.access_token) {
+                    oauthToken = resp.access_token;
+                    sessionStorage.setItem('google_oauth_token', oauthToken);
+                    
+                    // Fetch user profile
+                    await fetchUserProfile(oauthToken);
+                    updateGoogleAuthUI();
+                    
+                    // Auto-sync / Restore after successful login
+                    await handleGoogleLoginSync();
+                }
+            };
+
+            if (isMockGoogle) {
+                tokenClient = {
+                    requestAccessToken: function() {
+                        setTimeout(() => {
+                            callbackFn({
+                                access_token: 'mock-access-token-999'
+                            });
+                        }, 500);
+                    }
+                };
+                return;
+            }
+
+            tokenClient = google.accounts.oauth2.initTokenClient({
+                client_id: clientId,
+                scope: 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email',
+                callback: callbackFn
+            });
+        } catch (e) {
+            console.error("Failed to initialize Google GIS:", e);
+        }
+    }
+
+    async function fetchUserProfile(token) {
+        if (isMockGoogle) {
+            const profile = {
+                name: '테스트 유저 (Mock User)',
+                email: 'mock-user@example.com',
+                picture: 'https://lh3.googleusercontent.com/a/default-user=s96-c'
+            };
+            sessionStorage.setItem('google_user_profile', JSON.stringify(profile));
+            return;
+        }
+        try {
+            const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (res.ok) {
+                const profile = await res.json();
+                sessionStorage.setItem('google_user_profile', JSON.stringify(profile));
+            }
+        } catch (e) {
+            console.error("Failed to fetch Google profile:", e);
+        }
+    }
+
+    // Google Sign in trigger
+    googleSigninBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+            if (isMockGoogle) {
+                initGIS('mock-client-id');
+                if (tokenClient) {
+                    tokenClient.requestAccessToken();
+                }
+                return;
+            }
+            if (!GOOGLE_CLIENT_ID || GOOGLE_CLIENT_ID.startsWith('YOUR_GOOGLE_CLIENT_ID')) {
+                alert('app.js 파일 상단에 구글 OAuth 2.0 Client ID를 설정해 주세요.');
+                return;
+            }
+            initGIS(GOOGLE_CLIENT_ID);
+            if (tokenClient) {
+                tokenClient.requestAccessToken({ prompt: 'consent' });
+            } else {
+                alert('Google Client 초기화에 실패했습니다. Client ID가 올바른지 확인해 주세요.');
+            }
+        });
+    });
+
+    // Google Logout
+    if (googleLogoutBtn) {
+        googleLogoutBtn.addEventListener('click', () => {
+            if (oauthToken && !isMockGoogle) {
+                try {
+                    google.accounts.oauth2.revokeToken(oauthToken, () => {});
+                } catch(e) {}
+            }
+            sessionStorage.removeItem('google_oauth_token');
+            sessionStorage.removeItem('google_user_profile');
+            localStorage.removeItem('google_drive_last_backup');
+            if (isMockGoogle) {
+                localStorage.removeItem(MOCK_DRIVE_STORAGE_KEY);
+            }
+            oauthToken = null;
+            updateGoogleAuthUI();
+            alert('구글 계정 연동이 해제되었습니다.');
+        });
+    }
+
+    // === Direct Google Drive REST API v3 Helpers ===
+    async function findBackupFile(token) {
+        if (isMockGoogle) {
+            const fileData = localStorage.getItem(MOCK_DRIVE_STORAGE_KEY);
+            if (fileData) {
+                return { id: 'mock-file-123', name: 'tori_stock_backup.json', modifiedTime: new Date().toISOString() };
+            }
+            return null;
+        }
+        const response = await fetch(
+            `https://www.googleapis.com/drive/v3/files?q=name='tori_stock_backup.json' and trashed=false&fields=files(id, name, modifiedTime)`,
+            {
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            }
+        );
+        if (!response.ok) {
+            throw new Error(`파일 검색 실패: ${response.statusText}`);
+        }
+        const data = await response.json();
+        return data.files && data.files.length > 0 ? data.files[0] : null;
+    }
+
+    async function downloadBackupFile(token, fileId) {
+        if (isMockGoogle) {
+            const fileData = localStorage.getItem(MOCK_DRIVE_STORAGE_KEY);
+            return fileData ? JSON.parse(fileData) : null;
+        }
+        const response = await fetch(
+            `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
+            {
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            }
+        );
+        if (!response.ok) {
+            throw new Error(`파일 다운로드 실패: ${response.statusText}`);
+        }
+        return await response.json();
+    }
+
+    async function createBackupFile(token, payload) {
+        if (isMockGoogle) {
+            localStorage.setItem(MOCK_DRIVE_STORAGE_KEY, JSON.stringify(payload));
+            return 'mock-file-123';
+        }
+        const metadataResponse = await fetch(
+            'https://www.googleapis.com/drive/v3/files',
+            {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    name: 'tori_stock_backup.json',
+                    mimeType: 'application/json'
+                })
+            }
+        );
+        if (!metadataResponse.ok) {
+            throw new Error(`파일 메타데이터 생성 실패: ${metadataResponse.statusText}`);
+        }
+        const file = await metadataResponse.json();
+        const fileId = file.id;
+
+        await uploadBackupContent(token, fileId, payload);
+        return fileId;
+    }
+
+    async function uploadBackupContent(token, fileId, payload) {
+        if (isMockGoogle) {
+            localStorage.setItem(MOCK_DRIVE_STORAGE_KEY, JSON.stringify(payload));
+            return { id: 'mock-file-123' };
+        }
+        const response = await fetch(
+            `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`,
+            {
+                method: 'PATCH',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(payload)
+            }
+        );
+        if (!response.ok) {
+            throw new Error(`파일 업로드 실패: ${response.statusText}`);
+        }
+        return await response.json();
+    }
+
+    // Google Drive 연동 데이터 복원 및 초기화 흐름
+    async function handleGoogleLoginSync() {
+        if (!oauthToken) return;
+        
+        if (googleBackupStatus) googleBackupStatus.innerText = "연동 확인 중...";
+        const spinner = document.querySelector('.sync-spinner');
+        if (spinner) spinner.style.display = 'inline-block';
+        
+        try {
+            const file = await findBackupFile(oauthToken);
+            
+            if (file) {
+                const backupData = await downloadBackupFile(oauthToken, file.id);
+                
+                if (backupData && backupData.data && 
+                    ((backupData.data.portfolio && backupData.data.portfolio.length > 0) || 
+                     (backupData.data.recentSearches && backupData.data.recentSearches.length > 0))
+                ) {
+                    portfolio = backupData.data.portfolio || [];
+                    localStorage.setItem('my_portfolio_items', JSON.stringify(portfolio));
+                    
+                    recentSearches = backupData.data.recentSearches || [];
+                    localStorage.setItem('recent_searches', JSON.stringify(recentSearches));
+                    
+                    if (typeof renderPortfolioModal === 'function') {
+                        await renderPortfolioModal();
+                    }
+                    
+                    const timeStr = file.modifiedTime ? new Date(file.modifiedTime).toLocaleString('ko-KR') : new Date().toLocaleString('ko-KR');
+                    localStorage.setItem('google_drive_last_backup', timeStr);
+                    if (googleBackupTime) googleBackupTime.innerText = `마지막 동기화 일시: ${timeStr}`;
+                    if (googleBackupStatus) googleBackupStatus.innerText = "동기화 완료";
+                    
+                    console.log("구글 드라이브로부터 포트폴리오 및 최근 검색 데이터 복원 성공");
+                } else {
+                    await triggerGoogleDriveSync(false);
+                    console.log("빈 백업 파일로 인한 로컬 데이터 구글 드라이브 백업 완료");
+                }
+            } else {
+                await triggerGoogleDriveSync(false);
+                console.log("최초 로그인으로 인한 로컬 데이터 구글 드라이브 백업 완료");
+            }
+        } catch (e) {
+            console.error("Google Drive sync initialization failed:", e);
+            if (googleBackupStatus) googleBackupStatus.innerText = `동기화 실패 (${e.message || e})`;
+        } finally {
+            if (spinner) spinner.style.display = 'none';
+        }
+    }
+
+    // Google Drive API: Backup (upload or create)
+    async function triggerGoogleDriveSync(manual = false) {
+        if (!oauthToken) {
+            if (manual) alert('구글 계정이 연동되어 있지 않습니다.');
+            return;
+        }
+        
+        if (syncPending) return;
+        syncPending = true;
+        
+        if (googleBackupStatus) googleBackupStatus.innerText = "동기화 진행 중...";
+        const spinner = document.querySelector('.sync-spinner');
+        const btnText = document.querySelector('.sync-btn-text');
+        if (spinner) spinner.style.display = 'inline-block';
+        if (btnText) btnText.innerText = " 동기화 중...";
+        
+        try {
+            const payload = {
+                data: {
+                    portfolio: JSON.parse(localStorage.getItem('my_portfolio_items')) || [],
+                    recentSearches: JSON.parse(localStorage.getItem('recent_searches')) || []
+                }
+            };
+            
+            const file = await findBackupFile(oauthToken);
+            if (file) {
+                await uploadBackupContent(oauthToken, file.id, payload);
+            } else {
+                await createBackupFile(oauthToken, payload);
+            }
+            
+            const timeStr = new Date().toLocaleString('ko-KR');
+            localStorage.setItem('google_drive_last_backup', timeStr);
+            
+            if (googleBackupStatus) googleBackupStatus.innerText = "동기화 완료";
+            if (googleBackupTime) googleBackupTime.innerText = `마지막 백업 일시: ${timeStr}`;
+            if (manual) alert('구글 드라이브 동기화 성공!');
+        } catch (e) {
+            console.error("Google Drive sync failed:", e);
+            if (googleBackupStatus) googleBackupStatus.innerText = `동기화 실패 (${e.message || e})`;
+            if (manual) alert(`구글 드라이브 동기화 실패: ${e.message || e}\n다시 로그인해 보시거나 API 연결을 확인해 주세요.`);
+        } finally {
+            syncPending = false;
+            if (spinner) spinner.style.display = 'none';
+            if (btnText) btnText.innerText = "🔄 지금 구글 드라이브로 동기화";
+        }
+    }
+
+    if (googleSyncNowBtn) {
+        googleSyncNowBtn.addEventListener('click', () => {
+            triggerGoogleDriveSync(true);
+        });
+    }
+
+    // Initialize UI on load
+    updateGoogleAuthUI();
+    if (isMockGoogle || (GOOGLE_CLIENT_ID && !GOOGLE_CLIENT_ID.startsWith('YOUR_GOOGLE_CLIENT_ID'))) {
+        initGIS(GOOGLE_CLIENT_ID || 'mock-client-id');
+        if (sessionStorage.getItem('google_oauth_token')) {
+            handleGoogleLoginSync();
+        }
+    }
+
+    // TradingView-style chart info consent popup helper
+    window._chartConsentPopupVisible = false;
+
+    function showChartConsentPopup(chart) {
+        const popup = document.getElementById('chart-info-consent-popup');
+        if (!popup) return;
+        
+        window._chartConsentPopupVisible = true;
+        
+        const canvas = chart.canvas;
+        const rect = canvas.getBoundingClientRect();
+        
+        popup.style.display = 'block';
+        // Center the popup over the chart area
+        popup.style.left = (rect.left + (rect.width - 280) / 2) + 'px';
+        popup.style.top = (rect.top + (rect.height - 180) / 2) + 'px';
+    }
+
+    const consentBtn = document.getElementById('chart-consent-ok-btn');
+    if (consentBtn) {
+        consentBtn.addEventListener('click', () => {
+            sessionStorage.setItem('chartDetailConsent', 'yes');
+            const popup = document.getElementById('chart-info-consent-popup');
+            if (popup) popup.style.display = 'none';
+            window._chartConsentPopupVisible = false;
+            
+            // Immediately show comparison values if mouse is currently over chart
+            const descEl = document.getElementById('detail-candle-desc');
+            const compLine = document.getElementById('desc-comparison-line');
+            if (descEl) descEl.style.opacity = '1';
+            if (compLine) compLine.style.display = 'block';
+        });
+    }
 });
