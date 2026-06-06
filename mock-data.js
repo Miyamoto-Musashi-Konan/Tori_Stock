@@ -111,6 +111,7 @@ const MockDataModule = (() => {
         php: { code: "PHP", name: "필리핀 페소", base: 23.18, current: 23.18, prevClose: 23.25, type: "travel" },
         sgd: { code: "SGD", name: "싱가포르 달러", base: 1002.80, current: 1002.80, prevClose: 999.50, type: "travel" },
         hkd: { code: "HKD", name: "홍콩 달러", base: 173.20, current: 173.20, prevClose: 172.90, type: "travel" },
+        myr: { code: "MYR", name: "말레이시아 링깃", base: 288.97, current: 288.97, prevClose: 282.47, type: "travel" },
         jpy_travel: { code: "JPY", name: "일본 엔화 (도쿄/오사카)", base: 861.20, current: 861.20, prevClose: 864.80, type: "travel" },
         eur_travel: { code: "EUR", name: "유럽 유로 (프랑스/이탈리아)", base: 1462.60, current: 1462.60, prevClose: 1465.10, type: "travel" }
     };
@@ -169,14 +170,28 @@ const MockDataModule = (() => {
         const currencyUpdates = {};
         Object.keys(liveCurrencies).forEach(key => {
             const currObj = liveCurrencies[key];
-            // 환율 변동성 (0.01%~0.03%)
-            const volatility = key === 'usd' || key === 'jpy' || key === 'eur' ? 0.00015 : 0.00025;
-            const changePercent = (Math.random() - 0.5) * volatility;
-            const delta = currObj.current * changePercent;
-            
-            // 소수점 자리수 맞춤 (동은 소수점 둘째자리, 일반 통화는 둘째자리)
             const decimals = currObj.code === "VND" ? 2 : 2;
-            currObj.current = parseFloat((currObj.current + delta).toFixed(decimals));
+            
+            // Synchronize travel entries directly to avoid separate random walk drift
+            if (key === 'jpy_travel' && liveCurrencies.jpy) {
+                currObj.current = liveCurrencies.jpy.current;
+                currObj.prevClose = liveCurrencies.jpy.prevClose;
+                currObj.base = liveCurrencies.jpy.base;
+            } else if (key === 'eur_travel' && liveCurrencies.eur) {
+                currObj.current = liveCurrencies.eur.current;
+                currObj.prevClose = liveCurrencies.eur.prevClose;
+                currObj.base = liveCurrencies.eur.base;
+            } else {
+                // Mean-reverting random walk to keep rates anchored to actual fetched API values
+                const baseRate = currObj.base || currObj.current;
+                const driftSpeed = 0.05;
+                const drift = (baseRate - currObj.current) * driftSpeed;
+                const volatility = key === 'usd' || key === 'jpy' || key === 'eur' ? 0.0001 : 0.00015;
+                const randomShock = (Math.random() - 0.5) * volatility * currObj.current;
+                const delta = drift + randomShock;
+                
+                currObj.current = parseFloat((currObj.current + delta).toFixed(decimals));
+            }
 
             const netChange = currObj.current - currObj.prevClose;
             const pctChange = (netChange / currObj.prevClose) * 100;
@@ -208,6 +223,36 @@ const MockDataModule = (() => {
                 changeRate: rateObj.changeRate
             };
         });
+
+        // 4. 역사적 추세 마지막 데이터 포인트를 라이브 틱 가격으로 동시 업데이트
+        if (historicalDataCache && historicalDataCache.length > 0) {
+            const lastItem = historicalDataCache[historicalDataCache.length - 1];
+            if (liveCurrencies.usd) lastItem.usdKrw = liveCurrencies.usd.current;
+            if (liveCurrencies.jpy) lastItem.jpyKrw = liveCurrencies.jpy.current;
+            if (liveCurrencies.eur) lastItem.eurKrw = liveCurrencies.eur.current;
+            if (liveCurrencies.cny) lastItem.cnyKrw = liveCurrencies.cny.current;
+
+            if (liveIndices.kospi) lastItem.kospi = liveIndices.kospi.current;
+            if (liveIndices.sp500) lastItem.sp500 = liveIndices.sp500.current;
+            if (liveIndices.nasdaq) lastItem.nasdaq = liveIndices.nasdaq.current;
+
+            if (usdBasisRates.jpy) {
+                lastItem.usdjpy = usdBasisRates.jpy.current;
+                lastItem.jpyValueVsUsd = parseFloat((100 * (105.16 / usdBasisRates.jpy.current)).toFixed(1));
+            }
+            if (usdBasisRates.eur) {
+                lastItem.eurusd = usdBasisRates.eur.current;
+            }
+            if (usdBasisRates.cny) {
+                lastItem.usdcny = usdBasisRates.cny.current;
+            }
+            if (usdBasisRates.krw) {
+                const dxyDelta = (Math.random() - 0.5) * 0.05;
+                const dxyVal = parseFloat(((lastItem.dxy || 104.5) + dxyDelta).toFixed(2));
+                lastItem.dxy = dxyVal;
+                lastItem.usdValueIndex = parseFloat((100 * (101.87 / dxyVal)).toFixed(1));
+            }
+        }
 
         return {
             indices: indexUpdates,
@@ -297,6 +342,24 @@ const MockDataModule = (() => {
             }
             if (data.usdjpy) {
                 finalAnchor.jpyValueVsUsd = parseFloat((100 * (105.16 / data.usdjpy)).toFixed(1));
+            }
+
+            // Also update the extended cache's last item if it exists
+            if (historicalDataCache && historicalDataCache.length > 0) {
+                const cacheAnchor = historicalDataCache[historicalDataCache.length - 1];
+                Object.keys(data).forEach(key => {
+                    if (cacheAnchor[key] !== undefined) {
+                        cacheAnchor[key] = data[key];
+                    }
+                });
+                if (data.dxy) {
+                    cacheAnchor.usdValueIndex = parseFloat((100 * (101.87 / data.dxy)).toFixed(1));
+                    cacheAnchor.dxy = data.dxy;
+                }
+                if (data.usdjpy) {
+                    cacheAnchor.jpyValueVsUsd = parseFloat((100 * (105.16 / data.usdjpy)).toFixed(1));
+                    cacheAnchor.usdjpy = data.usdjpy;
+                }
             }
         },
         tick: tickLiveMarket

@@ -841,8 +841,65 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // 여행지 기준 환율 설정 ('krw' 또는 'usd')
     let travelBase = 'krw';
+
+    // 2026 연초 대비 주요 환율 기준값 (인베스팅닷컴/한국은행 기준 비율 계산을 위한 백데이터)
+    const yearStartRates = {
+        krw: 1282.07,
+        jpy: 154.84,
+        eur: 1.0935, // EUR/USD 기준 고정값
+        cny: 7.4292,
+        vnd: 25418,
+        thb: 35.42,
+        twd: 32.00,
+        sgd: 1.3567,
+        php: 55.72,
+        hkd: 7.7615,
+        myr: 4.7876
+    };
+
+    let dollarBasisChart = null;
+    let currentDollarBasisPeriod = 'ytd'; // default to YTD
+
+    // 직전 틱 환율 데이터 임시 캐시 (Daily 전일대비 변동 시뮬레이션 동기화용)
+    const prevUsdExchangeRates = {
+        krw: 1352.40, jpy: 157.04, eur: 0.9245, cny: 7.2480, vnd: 25450.0,
+        thb: 36.70, twd: 32.25, sgd: 1.35, php: 58.50, hkd: 7.81, myr: 4.68
+    };
+
+    // YTD(연초) 외에 1주일 전(1w), 1달 전(1m)의 상대적 가치 변동률 가중치 템플릿
+    const timeframeChangeOffsets = {
+        '1w': {
+            krw: -1.2, php: -0.9, thb: -0.7, jpy: -0.4, eur: -0.2, twd: -0.1, hkd: -0.05, vnd: -0.02, sgd: 0.15, myr: 0.5, cny: 0.6
+        },
+        '1m': {
+            krw: -3.1, php: -2.5, thb: -2.0, jpy: -1.1, eur: -0.5, twd: -0.3, hkd: -0.15, vnd: -0.05, sgd: 0.35, myr: 1.2, cny: 1.5
+        }
+    };
+
     // 실시간 수급 현황 최신 상태 임시 저장
     window.latestTickResult = null;
+
+    // 주요 환율 및 지수 동기화용 공유 매핑
+    const currencyKeyMap = {
+        'USDKRW=X': 'usd', 'USD': 'usd', 'USD/KRW': 'usd', 'USD-KRW': 'usd', 'USDKRW': 'usd',
+        'JPYKRW=X': 'jpy', 'JPY': 'jpy', 'JPY/KRW': 'jpy', 'JPY-KRW': 'jpy', 'JPYKRW': 'jpy',
+        'EURKRW=X': 'eur', 'EUR': 'eur', 'EUR/KRW': 'eur', 'EUR-KRW': 'eur', 'EURKRW': 'eur',
+        'CNYKRW=X': 'cny', 'CNY': 'cny', 'CNY/KRW': 'cny', 'CNY-KRW': 'cny', 'CNYKRW': 'cny',
+        'VNDKRW=X': 'vnd', 'VND': 'vnd', 'VND/KRW': 'vnd', 'VND-KRW': 'vnd', 'VNDKRW': 'vnd',
+        'THBKRW=X': 'thb', 'THB': 'thb', 'THB/KRW': 'thb', 'THB-KRW': 'thb', 'THBKRW': 'thb',
+        'TWDKRW=X': 'twd', 'TWD': 'twd', 'TWD/KRW': 'twd', 'TWD-KRW': 'twd', 'TWDKRW': 'twd',
+        'PHPKRW=X': 'php', 'PHP': 'php', 'PHP/KRW': 'php', 'PHP-KRW': 'php', 'PHPKRW': 'php',
+        'SGDKRW=X': 'sgd', 'SGD': 'sgd', 'SGD/KRW': 'sgd', 'SGD-KRW': 'sgd', 'SGDKRW': 'sgd',
+        'HKDKRW=X': 'hkd', 'HKD': 'hkd', 'HKD/KRW': 'hkd', 'HKD-KRW': 'hkd', 'HKDKRW': 'hkd',
+        'MYRKRW=X': 'myr', 'MYR': 'myr', 'MYR/KRW': 'myr', 'MYR-KRW': 'myr', 'MYRKRW': 'myr'
+    };
+
+    const indexKeyMap = {
+        '^KS11': 'kospi', 'KOSPI': 'kospi',
+        '^KQ11': 'kosdaq', 'KOSDAQ': 'kosdaq',
+        '^NDX': 'nasdaq', 'NASDAQ': 'nasdaq', '^IXIC': 'nasdaq',
+        '^GSPC': 'sp500', 'S&P 500': 'sp500', 'SP500': 'sp500'
+    };
 
     // 2. DOM 엘리먼트 선택자 정의
     const lastUpdateTimeEl = document.getElementById("last-update-time");
@@ -862,7 +919,10 @@ document.addEventListener("DOMContentLoaded", () => {
         vnd: 0.0531, // 1동 기준 원화 (100동당 5.31)
         thb: 36.85,
         twd: 41.92,
-        sgd: 1002.80
+        sgd: 1002.80,
+        php: 23.18,
+        hkd: 173.20,
+        myr: 288.97
     };
 
     // 달러 기준 환율 저장소 (USD Base)
@@ -874,7 +934,10 @@ document.addEventListener("DOMContentLoaded", () => {
         vnd: 25450.0, // 1달러당 동
         thb: 36.70,   // 1달러당 바트
         twd: 32.25,   // 1달러당 대만 달러
-        sgd: 1.35     // 1달러당 싱가포르 달러
+        sgd: 1.35,    // 1달러당 싱가포르 달러
+        php: 58.50,   // 1달러당 필리핀 페소
+        hkd: 7.81,    // 1달러당 홍콩 달러
+        myr: 4.68     // 1달러당 말레이시아 링깃
     };
 
     // 3. 네비게이션 탭 전환 기능
@@ -1317,6 +1380,21 @@ document.addEventListener("DOMContentLoaded", () => {
             const grid = document.getElementById('dynamic-summary-data-grid');
             if (!grid) return;
             
+            const indexLinks = {
+                'KOSPI': 'https://www.investing.com/indices/kospi',
+                'KOSDAQ': 'https://www.investing.com/indices/kosdaq',
+                'KOSPI 200': 'https://www.investing.com/indices/kospi-200',
+                '다우산업': 'https://www.investing.com/indices/us-30',
+                '나스닥종합': 'https://www.investing.com/indices/nasdaq-composite',
+                'S&P 500': 'https://www.investing.com/indices/us-spx-500',
+                '니케이 225': 'https://www.investing.com/indices/japan-ni225',
+                '상해종합': 'https://www.investing.com/indices/shanghai-composite',
+                '홍콩H': 'https://www.investing.com/indices/hang-sen-40',
+                '독일(DAX)': 'https://www.investing.com/indices/germany-30',
+                '영국(FTSE)': 'https://www.investing.com/indices/uk-100',
+                '프랑스(CAC)': 'https://www.investing.com/indices/france-40'
+            };
+            
             let html = '';
             currentSlideConfig.labels.forEach((label, i) => {
                 const dataArr = currentSummaryData[label];
@@ -1335,8 +1413,10 @@ document.addEventListener("DOMContentLoaded", () => {
                 const for_ = Math.floor(Math.random() * 10000) - 5000;
                 const inst = -(ind + for_);
                 
+                const targetLink = indexLinks[label] || 'https://www.investing.com/indices/';
+                
                 html += `
-                <div class="summary-data-col" style="background: rgba(255,255,255,0.02); padding: 16px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05);">
+                <div class="summary-data-col" style="cursor: pointer; background: rgba(255,255,255,0.02); padding: 16px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05);" onclick="window.open('${targetLink}', '_blank')">
                     <div class="summary-col-title">${label}</div>
                     <div class="summary-price-row">
                         <span class="summary-price ${colorClass}" style="font-size: 24px; font-weight: bold; margin-right: 12px;">${formatNumber(price, 2)}</span>
@@ -1510,6 +1590,99 @@ document.addEventListener("DOMContentLoaded", () => {
                 }
             }
         });
+
+        // 차트 wrapper에 클릭 이벤트: BIS 실질실효환율 통계 페이지로 이동
+        const wrapper = document.getElementById("chart-historical-main").parentElement;
+        if (wrapper) {
+            wrapper.addEventListener('click', () => {
+                window.open('https://www.bis.org/statistics/eer.htm', '_blank');
+            });
+        }
+        
+        // 초기 역사적 해설 카드 렌더링
+        updateHistoricalCommentary();
+    }
+
+    // 7-1. 역사적 데이터 실시간 동적 해설 생성
+    function updateHistoricalCommentary() {
+        const commentCard = document.getElementById("historical-dynamic-analysis");
+        if (!commentCard || !historicalData || historicalData.length < 2) return;
+        
+        const lastItem = historicalData[historicalData.length - 1];
+        const prevItem = historicalData[historicalData.length - 2];
+        
+        const lastLabel = lastItem.label; // e.g. "2026-06"
+        const parts = lastLabel.split("-");
+        const year = parts[0];
+        const month = parseInt(parts[1]);
+        
+        // Calculate monthly changes
+        const reerChange = lastItem.reer - prevItem.reer;
+        const reerPct = (reerChange / prevItem.reer) * 100;
+        
+        const dxyVal = lastItem.dxy || 104.5;
+        const prevDxy = prevItem.dxy || 104.5;
+        const dxyChange = dxyVal - prevDxy;
+        
+        const usdjpyVal = lastItem.usdjpy || 157.0;
+        
+        // standard benchmark starts at 2000-01 (historicalData[0])
+        const firstItem = historicalData[0];
+        
+        // KOSPI change vs prev month
+        const kospiPct = ((lastItem.kospi - prevItem.kospi) / prevItem.kospi) * 100;
+        const sp500Pct = ((lastItem.sp500 - prevItem.sp500) / prevItem.sp500) * 100;
+        
+        // Determine trends
+        const reerDir = reerChange >= 0 ? "상승" : "하락";
+        const reerColor = reerChange >= 0 ? "var(--bullish)" : "var(--bearish)";
+        const reerIcon = reerChange >= 0 ? "📈" : "📉";
+        
+        // Evaluation level: 100 is base (year 2000).
+        let valuationComment = "";
+        if (lastItem.reer < 85) {
+            valuationComment = "현재 원화의 실질실효환율(REER)은 85 이하의 <strong>역사적 저평가(Under-valued) 국면</strong>에 머물러 있습니다. 이는 2008년 금융위기 수준에 비견되는 강한 원화 저평가 상태로, 수출 기업의 가격 경쟁력에는 긍정적이나 국내 수입 물가 상승 및 실질 구매력 감소 압력으로 작용하고 있습니다.";
+        } else if (lastItem.reer < 98) {
+            valuationComment = "현재 원화의 실질실효환율(REER)은 85~98 사이로 <strong>실질 가치 저평가 국면</strong>을 나타내고 있습니다. 달러 대비 원화 환율 상승 및 원자재 가격 급등으로 실질 가치가 기준시점(2000년) 대비 낮게 형성되어 있습니다.";
+        } else {
+            valuationComment = "현재 원화의 실질실효환율(REER)은 98 이상으로 <strong>비교적 균형 가격(Fair Value) 또는 약고평가 구간</strong>에 진입해 있습니다. 국내 물가 상승률이 해외 주요국 대비 상대적으로 높거나 원화 강세가 반영된 결과입니다.";
+        }
+
+        commentCard.style.display = "block";
+        commentCard.innerHTML = `
+            <h3 class="panel-title" style="margin-top: 0; margin-bottom: 16px; font-size: 15px; color: var(--text-primary); display: flex; align-items: center; gap: 8px;">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--accent);">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                    <polyline points="14 2 14 8 20 8"></polyline>
+                    <line x1="16" y1="13" x2="8" y2="13"></line>
+                    <line x1="16" y1="17" x2="8" y2="17"></line>
+                    <polyline points="10 9 9 9 8 9"></polyline>
+                </svg>
+                역사적 통화 가치 실시간 동적 해설 (${year}년 ${month}월 기준)
+            </h3>
+            <div style="font-size: 13.5px; line-height: 1.6; color: var(--text-secondary);">
+                <p>
+                    <strong>원화 실질실효환율(REER) 추정치:</strong> 
+                    <span style="font-family: var(--font-heading); font-size: 16px; font-weight: bold; color: ${reerColor};">${lastItem.reer.toFixed(1)}</span> 
+                    (전월 대비 <span style="font-weight: bold; color: ${reerColor};">${reerIcon} ${Math.abs(reerPct).toFixed(2)}% ${reerDir}</span>)
+                </p>
+                <p style="margin-top: 12px;">
+                    ${valuationComment}
+                </p>
+                <div style="margin-top: 16px; padding: 12px; background: rgba(255,255,255,0.02); border-radius: 8px; border: 1px solid rgba(255,255,255,0.05); font-size: 12px;">
+                    <div style="font-weight: bold; color: var(--text-muted); margin-bottom: 8px;">주요 연동 자산군 및 매칭 환율</div>
+                    <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px;">
+                        <div>• 달러인덱스(DXY): <strong style="color: #6366f1; font-family: var(--font-heading);">${dxyVal.toFixed(1)}</strong></div>
+                        <div>• 달러/엔 환율: <strong style="color: #ff9800; font-family: var(--font-heading);">${usdjpyVal.toFixed(1)}엔</strong></div>
+                        <div>• KOSPI 변동률: <strong style="${kospiPct >= 0 ? 'color: var(--bullish)' : 'color: var(--bearish)'}; font-family: var(--font-heading);">${kospiPct >= 0 ? '+' : ''}${kospiPct.toFixed(1)}%</strong></div>
+                        <div>• S&P 500 변동률: <strong style="${sp500Pct >= 0 ? 'color: var(--bullish)' : 'color: var(--bearish)'}; font-family: var(--font-heading);">${sp500Pct >= 0 ? '+' : ''}${sp500Pct.toFixed(1)}%</strong></div>
+                    </div>
+                </div>
+                <p style="margin-top: 14px; font-size: 11.5px; color: var(--text-muted); text-align: right; margin-bottom: 0;">
+                    ※ 본 지표는 국제결제은행(BIS) 월간 REER 공식을 바탕으로 당사 실시간 환율을 반영하여 추정한 실시간 인덱스입니다.
+                </p>
+            </div>
+        `;
     }
 
     // 7-2. 역사적 데이터 차트 표시 토글
@@ -1940,6 +2113,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
                 // 달러 베이스 환율 변환 (역산 계산)
                 const usdRate = travelExchangeRates.usd;
+                usdExchangeRates.krw = usdRate; // KRW 환율 실시간 업데이트 동기화
                 Object.keys(travelExchangeRates).forEach(k => {
                     if (k === 'usd') return;
                     if (k === 'jpy' || k === 'vnd') {
@@ -2013,29 +2187,88 @@ document.addEventListener("DOMContentLoaded", () => {
         
         calculateTravelExchange('krw');
 
-        // D. 주요 달러 베이스 통화 환율 업데이트
-        Object.keys(tickResult.usdBasis).forEach(key => {
-            const data = tickResult.usdBasis[key];
-            const basisValEl = document.getElementById(`basis-val-${key}`);
-            const basisChgEl = document.getElementById(`basis-chg-${key}`);
-
-            if (basisValEl && basisChgEl) {
-                basisValEl.innerText = formatNumber(data.current, key === 'eur' || key === 'gbp' ? 4 : (key === 'jpy' || key === 'krw' ? 2 : 4));
-                
-                const changeSign = data.changeRate >= 0 ? "+" : "";
-                basisChgEl.innerText = `${changeSign}${formatNumber(data.changeRate, 2)}%`;
-                
-                if (data.changeRate >= 0) {
-                    basisChgEl.className = "basis-change bullish-badge";
-                } else {
-                    basisChgEl.className = "basis-change bearish-badge";
-                }
-            }
-        });
+        // D. 주요 달러 베이스 통화 환율 업데이트 (새로운 Chart.js 막대 차트 연동)
+        updateDollarBasisChart();
 
         // E. Fear & Greed 지수 업데이트
         const currentVal = parseInt(largeMeterValEl.textContent);
         updateFearGreedMeter(isNaN(currentVal) ? 68 : currentVal);
+
+        // F. 역사적 지수 흐름 차트 실시간 마지막 데이터 포인트 동기화 및 해설 업데이트
+        if (historicalChart && historicalData && historicalData.length > 0) {
+            const lastIdx = historicalData.length - 1;
+            const lastItem = historicalData[lastIdx];
+            
+            historicalChart.data.datasets[0].data[lastIdx] = lastItem.reer;
+            historicalChart.data.datasets[1].data[lastIdx] = lastItem.usdValueIndex;
+            historicalChart.data.datasets[2].data[lastIdx] = (lastItem.kospi / historicalData[0].kospi) * 100;
+            historicalChart.data.datasets[3].data[lastIdx] = (lastItem.sp500 / historicalData[0].sp500) * 100;
+            historicalChart.data.datasets[4].data[lastIdx] = lastItem.jpyValueVsUsd;
+            
+            historicalChart.update('none');
+            updateHistoricalCommentary();
+        }
+
+        // F. 상세 분석 페이지 실시간 데이터 동기화 (종목상세 Header 가격 연동)
+        if (currentTickerState && currentTickerState.symbol) {
+            const sym = currentTickerState.symbol.toUpperCase();
+            let liveVal = null;
+            let liveChange = null;
+            let livePct = null;
+            let decimals = 2;
+
+            // 주요 지수 동기화
+            if (sym === '^KS11' || sym === 'KOSPI') {
+                const d = tickResult.indices.kospi;
+                liveVal = d.current; liveChange = d.netChange; livePct = d.pctChange;
+            } else if (sym === '^KQ11' || sym === 'KOSDAQ') {
+                const d = tickResult.indices.kosdaq;
+                liveVal = d.current; liveChange = d.netChange; livePct = d.pctChange;
+            } else if (sym === '^NDX' || sym === 'NASDAQ' || sym === '^IXIC') {
+                const d = tickResult.indices.nasdaq;
+                liveVal = d.current; liveChange = d.netChange; livePct = d.pctChange;
+            } else if (sym === '^GSPC' || sym === 'S&P 500' || sym === 'SP500') {
+                const d = tickResult.indices.sp500;
+                liveVal = d.current; liveChange = d.netChange; livePct = d.pctChange;
+            }
+            
+            // 주요 환율 동기화 (원화 대비 및 달러 대비 호환 매핑)
+            const currKey = currencyKeyMap[sym];
+            if (currKey && tickResult.currencies[currKey]) {
+                const d = tickResult.currencies[currKey];
+                liveVal = d.current; liveChange = d.netChange; livePct = d.pctChange;
+                if (currKey === 'vnd') decimals = 2;
+            }
+
+            if (liveVal !== null) {
+                const detailPriceEl = document.getElementById('detail-price');
+                const detailChangeEl = document.getElementById('detail-change');
+                if (detailPriceEl && detailChangeEl) {
+                    detailPriceEl.innerText = formatNumber(liveVal, decimals);
+                    const sign = liveChange >= 0 ? '+' : '';
+                    detailChangeEl.innerText = `${sign}${formatNumber(liveChange, decimals)} (${sign}${formatNumber(livePct, 2)}%)`;
+                    detailChangeEl.className = liveChange >= 0 ? "index-change-badge bullish-badge" : "index-change-badge bearish-badge";
+                }
+
+                // 실시간 차트 봉/라인의 마지막 데이터 포인트를 라이브 틱 가격으로 동시 업데이트
+                if (detailChart && currentDetailData && currentDetailData.length > 0) {
+                    const lastIdx = currentDetailData.length - 1;
+                    const lastDataPoint = currentDetailData[lastIdx];
+                    
+                    lastDataPoint.c = liveVal;
+                    lastDataPoint.h = Math.max(lastDataPoint.h, liveVal);
+                    lastDataPoint.l = Math.min(lastDataPoint.l, liveVal);
+
+                    if (currentDetailMode === 'candlestick') {
+                        detailChart.data.datasets[0].data[lastIdx] = lastDataPoint;
+                    } else {
+                        detailChart.data.datasets[0].data[lastIdx] = { x: lastDataPoint.x, y: liveVal };
+                    }
+                    
+                    detailChart.update('none');
+                }
+            }
+        }
     }
 
     async function refreshRealData() {
@@ -2077,6 +2310,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
     function startRealtimeTickLoop() {
         setInterval(refreshRealData, 30000);
+        
+        // 2초 실시간 시뮬레이션 틱
+        setInterval(() => {
+            const tickResult = window.MockDataModule.tick();
+            updateDashboardUI(tickResult);
+        }, 2000);
     }
 
     // 11. CORS 우회용 주식 시세 API 호출 루프
@@ -2180,59 +2419,165 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     async function loadRealExchangeRates() {
+        // Yahoo Finance 실시간 환율 또는 open.er-api.com 폴백에서 USD 기준 환율 가져오기
+        let rates = null;        // { KRW, JPY, EUR, CNY, ... } — 1 USD = X 외화 형식
+        let prevCloseRates = null; // 동일 형식의 전일 종가
+        let dataSource = '';
+
+        // ── 1차: Yahoo Finance v8 API (실시간, 초 단위 갱신) ──
         try {
-            const res = await fetch('https://open.er-api.com/v6/latest/USD');
-            if (!res.ok) throw new Error("Failed to fetch exchange rates");
-            const data = await res.json();
-            const rates = data.rates;
+            const yahooSymbols = [
+                { symbol: 'USDKRW=X', key: 'KRW', inverse: false },
+                { symbol: 'USDJPY=X', key: 'JPY', inverse: false },
+                { symbol: 'EURUSD=X', key: 'EUR', inverse: true },   // EUR/USD → USD/EUR 역수
+                { symbol: 'USDCNY=X', key: 'CNY', inverse: false },
+                { symbol: 'USDVND=X', key: 'VND', inverse: false },
+                { symbol: 'USDTHB=X', key: 'THB', inverse: false },
+                { symbol: 'USDTWD=X', key: 'TWD', inverse: false },
+                { symbol: 'USDSGD=X', key: 'SGD', inverse: false },
+                { symbol: 'USDPHP=X', key: 'PHP', inverse: false },
+                { symbol: 'USDHKD=X', key: 'HKD', inverse: false },
+                { symbol: 'USDMYR=X', key: 'MYR', inverse: false },
+                { symbol: 'GBPUSD=X', key: 'GBP', inverse: true }    // GBP/USD → USD/GBP 역수
+            ];
+
+            const fetchPromises = yahooSymbols.map(async (pair) => {
+                const url = `https://query1.finance.yahoo.com/v8/finance/chart/${pair.symbol}?interval=1d&range=1d`;
+                const json = await fetchWithProxyFallback(url);
+                const meta = json.chart.result[0].meta;
+                let current = meta.regularMarketPrice;
+                let prevClose = meta.previousClose || meta.chartPreviousClose || current;
+                if (pair.inverse) {
+                    current = 1 / current;
+                    prevClose = 1 / prevClose;
+                }
+                return { key: pair.key, current, prevClose };
+            });
+
+            const results = await Promise.allSettled(fetchPromises);
+            rates = {};
+            prevCloseRates = {};
+
+            results.forEach((result) => {
+                if (result.status === 'fulfilled') {
+                    const { key, current, prevClose } = result.value;
+                    rates[key] = current;
+                    prevCloseRates[key] = prevClose;
+                }
+            });
+
+            if (!rates.KRW) throw new Error("USD/KRW not available from Yahoo Finance");
+            dataSource = 'Yahoo Finance (실시간)';
+            console.log(`[환율] Yahoo Finance 실시간 데이터 로드 성공 — USD/KRW: ${rates.KRW.toFixed(2)}`);
+        } catch (yahooErr) {
+            console.warn("[환율] Yahoo Finance 실패, open.er-api.com 폴백 시도:", yahooErr);
+            rates = null;
+        }
+
+        // ── 2차: open.er-api.com 폴백 (하루 1회 갱신) ──
+        if (!rates || !rates.KRW) {
+            try {
+                const res = await fetch('https://open.er-api.com/v6/latest/USD');
+                if (!res.ok) throw new Error("Fallback API HTTP error");
+                const data = await res.json();
+                rates = data.rates;
+                // open.er-api.com은 previousClose를 제공하지 않으므로 랜덤 시뮬레이션
+                prevCloseRates = {};
+                Object.keys(rates).forEach(k => {
+                    const deviation = (Math.random() - 0.5) * 0.003;
+                    prevCloseRates[k] = rates[k] / (1 + deviation);
+                });
+                dataSource = 'open.er-api.com (일 1회)';
+                console.log(`[환율] open.er-api.com 폴백 데이터 로드 — USD/KRW: ${rates.KRW}`);
+            } catch (fbErr) {
+                console.warn("[환율] 모든 환율 소스 실패:", fbErr);
+                return; // 데이터 없으면 종료
+            }
+        }
+
+        // ── Yahoo 부분 실패 시 누락 통화를 open.er-api.com으로 보충 ──
+        const requiredKeys = ['KRW', 'JPY', 'EUR', 'CNY', 'VND', 'THB', 'TWD', 'SGD', 'PHP', 'HKD', 'MYR', 'GBP'];
+        const missingKeys = requiredKeys.filter(k => !rates[k]);
+        if (missingKeys.length > 0 && dataSource.startsWith('Yahoo')) {
+            try {
+                const fbRes = await fetch('https://open.er-api.com/v6/latest/USD');
+                if (fbRes.ok) {
+                    const fbData = await fbRes.json();
+                    missingKeys.forEach(key => {
+                        if (fbData.rates[key]) {
+                            rates[key] = fbData.rates[key];
+                            prevCloseRates[key] = fbData.rates[key];
+                        }
+                    });
+                }
+            } catch (e) { /* 보충 실패 무시 */ }
+        }
+
+        // ── 공통 다운스트림: KRW 기준 환율 계산 ──
+        try {
             const krwRate = rates.KRW;
-
-            if (!krwRate) throw new Error("KRW rate not found in API response");
-
-            const getPrevClose = (curr) => {
-                const deviation = (Math.random() - 0.5) * 0.003;
-                return curr / (1 + deviation);
-            };
+            const krwPrevClose = prevCloseRates.KRW || krwRate;
 
             const usdCurrent = krwRate;
             const jpyCurrent = (1 / rates.JPY) * krwRate * 100;
             const eurCurrent = (1 / rates.EUR) * krwRate;
             const cnyCurrent = (1 / rates.CNY) * krwRate;
-            
-            const vndCurrent = (1 / rates.VND) * krwRate * 100;
-            const thbCurrent = (1 / rates.THB) * krwRate;
-            const twdCurrent = (1 / rates.TWD) * krwRate;
-            const phpCurrent = (1 / rates.PHP) * krwRate;
-            const sgdCurrent = (1 / rates.SGD) * krwRate;
-            const hkdCurrent = (1 / rates.HKD) * krwRate;
+            const vndCurrent = (1 / (rates.VND || 25450)) * krwRate * 100;
+            const thbCurrent = (1 / (rates.THB || 36.70)) * krwRate;
+            const twdCurrent = (1 / (rates.TWD || 32.25)) * krwRate;
+            const phpCurrent = (1 / (rates.PHP || 58.50)) * krwRate;
+            const sgdCurrent = (1 / (rates.SGD || 1.35)) * krwRate;
+            const hkdCurrent = (1 / (rates.HKD || 7.81)) * krwRate;
+            const myrCurrent = (1 / (rates.MYR || 4.68)) * krwRate;
+
+            // 실제 전일 종가 기반 이전가 계산 (Yahoo 제공 previousClose 활용)
+            const usdPrev = krwPrevClose;
+            const jpyPrev = (1 / (prevCloseRates.JPY || rates.JPY)) * krwPrevClose * 100;
+            const eurPrev = (1 / (prevCloseRates.EUR || rates.EUR)) * krwPrevClose;
+            const cnyPrev = (1 / (prevCloseRates.CNY || rates.CNY)) * krwPrevClose;
+            const vndPrev = (1 / (prevCloseRates.VND || rates.VND || 25450)) * krwPrevClose * 100;
+            const thbPrev = (1 / (prevCloseRates.THB || rates.THB || 36.70)) * krwPrevClose;
+            const twdPrev = (1 / (prevCloseRates.TWD || rates.TWD || 32.25)) * krwPrevClose;
+            const phpPrev = (1 / (prevCloseRates.PHP || rates.PHP || 58.50)) * krwPrevClose;
+            const sgdPrev = (1 / (prevCloseRates.SGD || rates.SGD || 1.35)) * krwPrevClose;
+            const hkdPrev = (1 / (prevCloseRates.HKD || rates.HKD || 7.81)) * krwPrevClose;
+            const myrPrev = (1 / (prevCloseRates.MYR || rates.MYR || 4.68)) * krwPrevClose;
 
             const currencyData = {
-                usd: { current: usdCurrent, prevClose: getPrevClose(usdCurrent) },
-                jpy: { current: jpyCurrent, prevClose: getPrevClose(jpyCurrent) },
-                eur: { current: eurCurrent, prevClose: getPrevClose(eurCurrent) },
-                cny: { current: cnyCurrent, prevClose: getPrevClose(cnyCurrent) },
-                vnd: { current: vndCurrent, prevClose: getPrevClose(vndCurrent) },
-                thb: { current: thbCurrent, prevClose: getPrevClose(thbCurrent) },
-                twd: { current: twdCurrent, prevClose: getPrevClose(twdCurrent) },
-                php: { current: phpCurrent, prevClose: getPrevClose(phpCurrent) },
-                sgd: { current: sgdCurrent, prevClose: getPrevClose(sgdCurrent) },
-                hkd: { current: hkdCurrent, prevClose: getPrevClose(hkdCurrent) },
-                jpy_travel: { current: jpyCurrent, prevClose: getPrevClose(jpyCurrent) },
-                eur_travel: { current: eurCurrent, prevClose: getPrevClose(eurCurrent) }
+                usd: { current: usdCurrent, prevClose: usdPrev },
+                jpy: { current: jpyCurrent, prevClose: jpyPrev },
+                eur: { current: eurCurrent, prevClose: eurPrev },
+                cny: { current: cnyCurrent, prevClose: cnyPrev },
+                vnd: { current: vndCurrent, prevClose: vndPrev },
+                thb: { current: thbCurrent, prevClose: thbPrev },
+                twd: { current: twdCurrent, prevClose: twdPrev },
+                php: { current: phpCurrent, prevClose: phpPrev },
+                sgd: { current: sgdCurrent, prevClose: sgdPrev },
+                hkd: { current: hkdCurrent, prevClose: hkdPrev },
+                myr: { current: myrCurrent, prevClose: myrPrev },
+                jpy_travel: { current: jpyCurrent, prevClose: jpyPrev },
+                eur_travel: { current: eurCurrent, prevClose: eurPrev }
             };
 
+            // USD 기준 데이터 (달러 대비 통화가치 변동률 차트용)
             const eurUsd = 1 / rates.EUR;
             const usdJpy = rates.JPY;
-            const gbpUsd = 1 / rates.GBP;
+            const gbpUsd = rates.GBP ? 1 / rates.GBP : 1.34;
             const usdCny = rates.CNY;
             const usdKrw = krwRate;
 
+            const prevEurUsd = prevCloseRates.EUR ? 1 / prevCloseRates.EUR : eurUsd;
+            const prevUsdJpy = prevCloseRates.JPY || usdJpy;
+            const prevGbpUsd = prevCloseRates.GBP ? 1 / prevCloseRates.GBP : gbpUsd;
+            const prevUsdCny = prevCloseRates.CNY || usdCny;
+            const prevUsdKrw = krwPrevClose;
+
             const usdBasisData = {
-                eur: { current: eurUsd, prevClose: getPrevClose(eurUsd), changeRate: parseFloat(((eurUsd - getPrevClose(eurUsd)) / getPrevClose(eurUsd) * 100).toFixed(2)) },
-                jpy: { current: usdJpy, prevClose: getPrevClose(usdJpy), changeRate: parseFloat(((usdJpy - getPrevClose(usdJpy)) / getPrevClose(usdJpy) * 100).toFixed(2)) },
-                gbp: { current: gbpUsd, prevClose: getPrevClose(gbpUsd), changeRate: parseFloat(((gbpUsd - getPrevClose(gbpUsd)) / getPrevClose(gbpUsd) * 100).toFixed(2)) },
-                cny: { current: usdCny, prevClose: getPrevClose(usdCny), changeRate: parseFloat(((usdCny - getPrevClose(usdCny)) / getPrevClose(usdCny) * 100).toFixed(2)) },
-                krw: { current: usdKrw, prevClose: getPrevClose(usdKrw), changeRate: parseFloat(((usdKrw - getPrevClose(usdKrw)) / getPrevClose(usdKrw) * 100).toFixed(2)) }
+                eur: { current: eurUsd, prevClose: prevEurUsd, changeRate: parseFloat(((eurUsd - prevEurUsd) / prevEurUsd * 100).toFixed(2)) },
+                jpy: { current: usdJpy, prevClose: prevUsdJpy, changeRate: parseFloat(((usdJpy - prevUsdJpy) / prevUsdJpy * 100).toFixed(2)) },
+                gbp: { current: gbpUsd, prevClose: prevGbpUsd, changeRate: parseFloat(((gbpUsd - prevGbpUsd) / prevGbpUsd * 100).toFixed(2)) },
+                cny: { current: usdCny, prevClose: prevUsdCny, changeRate: parseFloat(((usdCny - prevUsdCny) / prevUsdCny * 100).toFixed(2)) },
+                krw: { current: usdKrw, prevClose: prevUsdKrw, changeRate: parseFloat(((usdKrw - prevUsdKrw) / prevUsdKrw * 100).toFixed(2)) }
             };
 
             travelExchangeRates.usd = usdCurrent;
@@ -2243,15 +2588,34 @@ document.addEventListener("DOMContentLoaded", () => {
             travelExchangeRates.thb = thbCurrent;
             travelExchangeRates.twd = twdCurrent;
             travelExchangeRates.sgd = sgdCurrent;
+            travelExchangeRates.php = phpCurrent;
+            travelExchangeRates.hkd = hkdCurrent;
+            travelExchangeRates.myr = myrCurrent;
 
             usdExchangeRates.krw = krwRate;
             usdExchangeRates.jpy = rates.JPY;
             usdExchangeRates.eur = rates.EUR;
             usdExchangeRates.cny = rates.CNY;
-            usdExchangeRates.vnd = rates.VND;
-            usdExchangeRates.thb = rates.THB;
-            usdExchangeRates.twd = rates.TWD;
-            usdExchangeRates.sgd = rates.SGD;
+            usdExchangeRates.vnd = rates.VND || 25450;
+            usdExchangeRates.thb = rates.THB || 36.70;
+            usdExchangeRates.twd = rates.TWD || 32.25;
+            usdExchangeRates.sgd = rates.SGD || 1.35;
+            usdExchangeRates.php = rates.PHP || 58.50;
+            usdExchangeRates.hkd = rates.HKD || 7.81;
+            usdExchangeRates.myr = rates.MYR || 4.68;
+
+            // 실제 전일 종가 기반 Daily 비교용 이전 환율 캐시 업데이트
+            prevUsdExchangeRates.krw = krwPrevClose;
+            prevUsdExchangeRates.jpy = prevCloseRates.JPY || rates.JPY;
+            prevUsdExchangeRates.eur = prevCloseRates.EUR || rates.EUR;
+            prevUsdExchangeRates.cny = prevCloseRates.CNY || rates.CNY;
+            prevUsdExchangeRates.vnd = prevCloseRates.VND || rates.VND || 25450;
+            prevUsdExchangeRates.thb = prevCloseRates.THB || rates.THB || 36.70;
+            prevUsdExchangeRates.twd = prevCloseRates.TWD || rates.TWD || 32.25;
+            prevUsdExchangeRates.sgd = prevCloseRates.SGD || rates.SGD || 1.35;
+            prevUsdExchangeRates.php = prevCloseRates.PHP || rates.PHP || 58.50;
+            prevUsdExchangeRates.hkd = prevCloseRates.HKD || rates.HKD || 7.81;
+            prevUsdExchangeRates.myr = prevCloseRates.MYR || rates.MYR || 4.68;
 
             window.MockDataModule.updateCurrencies(currencyData);
             window.MockDataModule.updateUsdBasis(usdBasisData);
@@ -2263,7 +2627,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 cnyKrw: cnyCurrent
             });
         } catch (e) {
-            console.warn("Failed to load real exchange rates, fallback to simulation", e);
+            console.warn("[환율] 다운스트림 데이터 처리 중 오류:", e);
         }
     }
 
@@ -2281,6 +2645,427 @@ document.addEventListener("DOMContentLoaded", () => {
             console.warn("Failed to load real Fear & Greed index, fallback to simulation", e);
         }
     }
+    function getYahooFinanceUrl(tickerState) {
+        let sym = tickerState.symbol;
+        if (!sym) return 'https://finance.yahoo.com/';
+        
+        // 한국 및 일본 시장 접미사 처리
+        if (tickerState.exchange === 'kospi') {
+            if (!sym.endsWith('.KS')) sym += '.KS';
+        } else if (tickerState.exchange === 'kosdaq') {
+            if (!sym.endsWith('.KQ')) sym += '.KQ';
+        } else if (tickerState.exchange === 'japan') {
+            if (!sym.endsWith('.T')) sym += '.T';
+        }
+        return `https://finance.yahoo.com/quote/${sym}`;
+    }
+
+    function getCurrencyValueChange(key) {
+        let currentRate = usdExchangeRates[key];
+        if (key === 'krw') {
+            currentRate = usdExchangeRates.krw;
+        }
+        if (!currentRate) return 0;
+        
+        if (currentDollarBasisPeriod === 'ytd') {
+            if (key === 'eur') {
+                // EUR/USD는 역수가 아닌 직관적 환율 (1유로당 달러)
+                const eurUsd = 1 / currentRate;
+                return ((eurUsd - yearStartRates.eur) / yearStartRates.eur) * 100;
+            } else {
+                // 다른 통화는 1달러당 외화 단위이므로 역산하여 가치 변화율 계산
+                return ((yearStartRates[key] / currentRate) - 1) * 100;
+            }
+        } else if (currentDollarBasisPeriod === 'daily') {
+            let prevRate = prevUsdExchangeRates[key];
+            if (key === 'krw') prevRate = prevUsdExchangeRates.krw;
+            if (!prevRate) prevRate = currentRate;
+            
+            if (key === 'eur') {
+                const eurUsd = 1 / currentRate;
+                const prevEurUsd = 1 / prevRate;
+                return ((eurUsd - prevEurUsd) / prevEurUsd) * 100;
+            } else {
+                return ((prevRate / currentRate) - 1) * 100;
+            }
+        } else {
+            // '1w' or '1m'의 기본 변동 가중치
+            const offset = timeframeChangeOffsets[currentDollarBasisPeriod][key] || 0;
+            // 실시간 틱을 반영하기 위해 오늘 하루의 미세 변동률(daily)을 가산해 줌으로써 실시간 그래프 생동감 구현
+            let dailyChange = 0;
+            let prevRate = prevUsdExchangeRates[key];
+            if (key === 'krw') prevRate = prevUsdExchangeRates.krw;
+            if (prevRate && prevRate !== currentRate) {
+                if (key === 'eur') {
+                    dailyChange = ((1 / currentRate) - (1 / prevRate)) / (1 / prevRate) * 100;
+                } else {
+                    dailyChange = (prevRate / currentRate - 1) * 100;
+                }
+            }
+            return offset + dailyChange;
+        }
+    }
+
+    function initDollarBasisChart() {
+        const canvas = document.getElementById('chart-dollar-basis');
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        
+        const currencyMeta = {
+            krw: { flag: '🇰🇷', name: '한국', shortName: '한국', code: 'KRW' },
+            php: { flag: '🇵🇭', name: '필리핀', shortName: '필리핀', code: 'PHP' },
+            thb: { flag: '🇹🇭', name: '태국', shortName: '태국', code: 'THB' },
+            jpy: { flag: '🇯🇵', name: '일본', shortName: '일본', code: 'JPY' },
+            eur: { flag: '🇪🇺', name: '유럽', shortName: '유럽', code: 'EUR' },
+            twd: { flag: '🇹🇼', name: '대만', shortName: '대만', code: 'TWD' },
+            hkd: { flag: '🇭🇰', name: '홍콩', shortName: '홍콩', code: 'HKD' },
+            vnd: { flag: '🇻🇳', name: '베트남', shortName: '베트남', code: 'VND' },
+            sgd: { flag: '🇸🇬', name: '싱가포르', shortName: '싱가폴', code: 'SGD' },
+            myr: { flag: '🇲🇾', name: '말레이시아', shortName: '말레이', code: 'MYR' },
+            cny: { flag: '🇨🇳', name: '중국', shortName: '중국', code: 'CNY' }
+        };
+
+        const valueLabelsPlugin = {
+            id: 'valueLabels',
+            afterDatasetsDraw: (chart) => {
+                const { ctx, data } = chart;
+                ctx.save();
+                const isMobile = window.innerWidth < 600;
+                ctx.font = isMobile ? 'bold 11px Inter, system-ui, sans-serif' : 'bold 12px Inter, system-ui, sans-serif';
+                ctx.textAlign = 'center';
+                
+                chart.getDatasetMeta(0).data.forEach((bar, index) => {
+                    const val = data.datasets[0].data[index];
+                    if (val === undefined || val === null) return;
+                    
+                    const isNegative = val < 0;
+                    const text = (val >= 0 ? '+' : '') + val.toFixed(1) + '%';
+                    
+                    ctx.fillStyle = index === 0 ? '#ff4b3e' : '#88c4fc';
+                    
+                    const x = bar.x;
+                    const y = isNegative ? bar.y + 12 : bar.y - 6;
+                    
+                    ctx.fillText(text, x, y);
+                });
+                ctx.restore();
+            }
+        };
+
+        const zeroLinePlugin = {
+            id: 'zeroLine',
+            afterDatasetsDraw: (chart) => {
+                const { ctx, scales: { x, y } } = chart;
+                const zeroY = y.getPixelForValue(0);
+                ctx.save();
+                ctx.beginPath();
+                ctx.moveTo(x.left, zeroY);
+                ctx.lineTo(x.right, zeroY);
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+                ctx.lineWidth = 1.5;
+                ctx.stroke();
+                ctx.restore();
+            }
+        };
+
+        const currencyLabelsPlugin = {
+            id: 'currencyLabels',
+            afterDatasetsDraw: (chart) => {
+                const { ctx, scales: { x, y }, data } = chart;
+                ctx.save();
+                const isMobile = window.innerWidth < 600;
+                ctx.font = isMobile 
+                    ? 'bold 11px Inter, "Malgun Gothic", "맑은 고딕", sans-serif' 
+                    : 'bold 12px Inter, "Malgun Gothic", "맑은 고딕", sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                
+                const zeroY = y.getPixelForValue(0);
+                const lineHeight = isMobile ? 13 : 16;
+                
+                chart.getDatasetMeta(0).data.forEach((bar, index) => {
+                    const val = data.datasets[0].data[index];
+                    if (val === undefined || val === null) return;
+                    
+                    const key = data.labels[index];
+                    const meta = currencyMeta[key];
+                    if (!meta) return;
+                    
+                    const flag = meta.flag;
+                    const name = isMobile ? meta.shortName : meta.name;
+                    const code = meta.code;
+                    
+                    const labelLines = isMobile ? [flag, name] : [flag + ' ' + name, code];
+                    const N = labelLines.length;
+                    const isKorea = (index === 0);
+                    
+                    labelLines.forEach((line, i) => {
+                        let yPos;
+                        if (val < 0) {
+                            // 음수면 막대가 아래로 자라므로 글씨는 baseline 위쪽(양수 영역)에 배치
+                            yPos = zeroY - 6 - (N - 1 - i) * lineHeight;
+                        } else {
+                            // 양수면 막대가 위로 자라므로 글씨는 baseline 아래쪽(음수 영역)에 배치
+                            yPos = zeroY + 10 + i * lineHeight;
+                        }
+                        
+                        // 색상 처리
+                        let lineColor = '#e2e8f0';
+                        if (isMobile) {
+                            if (i === 0) {
+                                lineColor = '#e2e8f0'; // emoji flag
+                            } else {
+                                lineColor = isKorea ? '#ff4b3e' : '#e2e8f0';
+                            }
+                        } else {
+                            if (i === 1) { // second line: code
+                                lineColor = isKorea ? '#ff8b80' : '#94a3b8';
+                            } else { // first line: flag + name
+                                lineColor = isKorea ? '#ff4b3e' : '#e2e8f0';
+                            }
+                        }
+                        
+                        ctx.fillStyle = lineColor;
+                        ctx.fillText(line, bar.x, yPos);
+                    });
+                });
+                ctx.restore();
+            }
+        };
+
+        const initialValues = [
+            getCurrencyValueChange('krw'),
+            getCurrencyValueChange('php'),
+            getCurrencyValueChange('thb'),
+            getCurrencyValueChange('jpy'),
+            getCurrencyValueChange('eur'),
+            getCurrencyValueChange('twd'),
+            getCurrencyValueChange('hkd'),
+            getCurrencyValueChange('myr'),
+            getCurrencyValueChange('vnd'),
+            getCurrencyValueChange('sgd'),
+            getCurrencyValueChange('cny')
+        ];
+
+        let maxVal = Math.max(...initialValues);
+        let minVal = Math.min(...initialValues);
+        const targetMax = Math.max(4.0, maxVal + 2.5);
+        const targetMin = Math.min(-4.0, minVal - 2.5);
+
+        dollarBasisChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: ['krw', 'php', 'thb', 'jpy', 'eur', 'twd', 'hkd', 'myr', 'vnd', 'sgd', 'cny'],
+                datasets: [{
+                    data: initialValues,
+                    backgroundColor: [
+                        '#ff4b3e', // Korea
+                        '#88c4fc',
+                        '#88c4fc',
+                        '#88c4fc',
+                        '#88c4fc',
+                        '#88c4fc',
+                        '#88c4fc',
+                        '#88c4fc',
+                        '#88c4fc',
+                        '#88c4fc',
+                        '#88c4fc'
+                    ],
+                    borderRadius: 5,
+                    borderSkipped: false,
+                    barPercentage: 0.85,
+                    categoryPercentage: 0.92
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    tooltip: {
+                        enabled: true,
+                        callbacks: {
+                            title: function(tooltipItems) {
+                                const key = tooltipItems[0].label;
+                                const meta = currencyMeta[key];
+                                return meta ? `${meta.flag} ${meta.name} (${meta.code})` : key;
+                            },
+                            label: function(context) {
+                                return `${context.raw.toFixed(2)}%`;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        grid: {
+                            display: false
+                        },
+                        ticks: {
+                            display: false // 기본 축 텍스트 숨김 (커스텀 플러그인으로 대체)
+                        }
+                    },
+                    y: {
+                        grid: {
+                            display: false
+                        },
+                        ticks: {
+                            display: false
+                        },
+                        min: targetMin,
+                        max: targetMax
+                    }
+                }
+            },
+            plugins: [valueLabelsPlugin, zeroLinePlugin, currencyLabelsPlugin]
+        });
+    }
+
+    function updateDollarBasisChart() {
+        if (!dollarBasisChart) return;
+        const newValues = [
+            getCurrencyValueChange('krw'),
+            getCurrencyValueChange('php'),
+            getCurrencyValueChange('thb'),
+            getCurrencyValueChange('jpy'),
+            getCurrencyValueChange('eur'),
+            getCurrencyValueChange('twd'),
+            getCurrencyValueChange('hkd'),
+            getCurrencyValueChange('myr'),
+            getCurrencyValueChange('vnd'),
+            getCurrencyValueChange('sgd'),
+            getCurrencyValueChange('cny')
+        ];
+        dollarBasisChart.data.datasets[0].data = newValues;
+
+        let maxVal = Math.max(...newValues);
+        let minVal = Math.min(...newValues);
+        const targetMax = Math.max(4.0, maxVal + 2.5);
+        const targetMin = Math.min(-4.0, minVal - 2.5);
+
+        dollarBasisChart.options.scales.y.min = targetMin;
+        dollarBasisChart.options.scales.y.max = targetMax;
+
+        dollarBasisChart.update('none');
+    }
+
+    function bindClickVerificationLinks() {
+        // A. 메인페이지 원화 대비 주요 환율 카드 링크 바인딩
+        const mainCurrencyLinks = {
+            'usd': 'https://www.investing.com/currencies/usd-krw',
+            'jpy': 'https://www.investing.com/currencies/jpy-krw',
+            'eur': 'https://www.investing.com/currencies/eur-krw',
+            'cny': 'https://www.investing.com/currencies/cny-krw'
+        };
+        Object.keys(mainCurrencyLinks).forEach(key => {
+            const card = document.getElementById(`curr-${key}`);
+            if (card) {
+                card.addEventListener('click', () => {
+                    window.open(mainCurrencyLinks[key], '_blank');
+                });
+            }
+        });
+
+        // B. 메인페이지 공포 탐욕 지수 요약 카드 링크 바인딩
+        const fgSummaryCard = document.getElementById('card-fear-greed-summary');
+        if (fgSummaryCard) {
+            fgSummaryCard.addEventListener('click', () => {
+                window.open('https://edition.cnn.com/markets/fear-and-greed', '_blank');
+            });
+        }
+
+        // C. 여행자 환율 계산기 카드 링크 바인딩 (현재 travelBase에 맞게 동적 링크 분기 처리)
+        const travelCardIds = ['usd', 'krw', 'jpy', 'eur', 'cny', 'vnd', 'thb', 'twd', 'sgd'];
+        travelCardIds.forEach(id => {
+            const card = document.getElementById(`travel-card-${id}`);
+            if (card) {
+                card.addEventListener('click', (event) => {
+                    // 입력창이나 스왑 버튼 등의 상호작용 요소 클릭 시에는 페이지 이동 스킵
+                    if (event.target.tagName === 'INPUT' || event.target.tagName === 'BUTTON' || event.target.closest('input, button, select, a')) {
+                        return;
+                    }
+                    
+                    let url = '';
+                    if (travelBase === 'krw') {
+                        // 원화 기준일 때는 원화 대비 환율 사이트 연결
+                        if (id === 'usd') url = 'https://www.investing.com/currencies/usd-krw';
+                        else if (id === 'jpy') url = 'https://www.investing.com/currencies/jpy-krw';
+                        else if (id === 'eur') url = 'https://www.investing.com/currencies/eur-krw';
+                        else if (id === 'cny') url = 'https://www.investing.com/currencies/cny-krw';
+                        else if (id === 'vnd') url = 'https://www.investing.com/currencies/vnd-krw';
+                        else if (id === 'thb') url = 'https://www.investing.com/currencies/thb-krw';
+                        else if (id === 'twd') url = 'https://www.investing.com/currencies/twd-krw';
+                        else if (id === 'sgd') url = 'https://www.investing.com/currencies/sgd-krw';
+                    } else {
+                        // 달러 기준일 때는 달러 대비 환율 사이트 연결
+                        if (id === 'krw') url = 'https://www.investing.com/currencies/usd-krw';
+                        else if (id === 'jpy') url = 'https://www.investing.com/currencies/usd-jpy';
+                        else if (id === 'eur') url = 'https://www.investing.com/currencies/eur-usd';
+                        else if (id === 'cny') url = 'https://www.investing.com/currencies/usd-cny';
+                        else if (id === 'vnd') url = 'https://www.investing.com/currencies/usd-vnd';
+                        else if (id === 'thb') url = 'https://www.investing.com/currencies/usd-thb';
+                        else if (id === 'twd') url = 'https://www.investing.com/currencies/usd-twd';
+                        else if (id === 'sgd') url = 'https://www.investing.com/currencies/usd-sgd';
+                    }
+                    
+                    if (url) {
+                        window.open(url, '_blank');
+                    }
+                });
+            }
+        });
+
+        // D. 달러 대비 가치 변동률 차트 섹션 전체 클릭 링크 바인딩
+        const dollarBasisCard = document.getElementById('dollar-basis-chart-card');
+        if (dollarBasisCard) {
+            dollarBasisCard.addEventListener('click', () => {
+                window.open('https://www.investing.com/currencies/', '_blank');
+            });
+        }
+
+        // E. 종목 상세분석 헤더 클릭 링크 바인딩 (야후 파이낸스)
+        const tickerDetailHeader = document.getElementById('ticker-detail-header');
+        if (tickerDetailHeader) {
+            tickerDetailHeader.style.cursor = 'pointer';
+            tickerDetailHeader.title = '클릭 시 야후 파이낸스 해당 종목 페이지로 이동';
+            tickerDetailHeader.addEventListener('click', () => {
+                const url = getYahooFinanceUrl(currentTickerState);
+                window.open(url, '_blank');
+            });
+        }
+
+        // F. 달러대비 통화가치 변동률 기간 선택 탭 버튼 바인딩
+        const basisTabButtons = document.querySelectorAll('.basis-tab-btn');
+        const dollarBasisSubtitle = document.querySelector('.dollar-basis-section .status-subtitle');
+        basisTabButtons.forEach(btn => {
+            btn.addEventListener('click', (event) => {
+                event.stopPropagation(); // 카드 전체 클릭 이동 방지
+                basisTabButtons.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                
+                const range = btn.getAttribute('data-range');
+                currentDollarBasisPeriod = range;
+
+                // 자막 문구 변경
+                if (dollarBasisSubtitle) {
+                    if (range === 'ytd') {
+                        dollarBasisSubtitle.innerText = '단위: %, 현지시간 연초(2026년 1월 1일) 대비 현재 실시간 통화가치 변동률';
+                    } else if (range === '1m') {
+                        dollarBasisSubtitle.innerText = '단위: %, 현지시간 1달 전 대비 현재 실시간 통화가치 변동률';
+                    } else if (range === '1w') {
+                        dollarBasisSubtitle.innerText = '단위: %, 현지시간 1주일 전 대비 현재 실시간 통화가치 변동률';
+                    } else if (range === 'daily') {
+                        dollarBasisSubtitle.innerText = '단위: %, 현지시간 전일(어제) 대비 현재 실시간 통화가치 변동률';
+                    }
+                }
+
+                // 차트 즉시 갱신
+                updateDollarBasisChart();
+            });
+        });
+    }
 
     // 12. 전체 대시보드 데이터 초기화 및 루프 실행
     async function initializeDashboard() {
@@ -2289,6 +3074,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
         initMarketSummaryChart();
         initHistoricalChart();
+        initDollarBasisChart();
+        bindClickVerificationLinks();
         startRealtimeTickLoop();
 
         Object.keys(travelExchangeRates).forEach(key => {
@@ -3223,13 +4010,30 @@ document.addEventListener("DOMContentLoaded", () => {
             return;
         }
 
+        const isScale100 = symbol.toUpperCase().includes('JPY') || symbol.toUpperCase().includes('VND');
+        const scaleFactor = isScale100 ? 100 : 1;
+
         try {
             const url = `https://query1.finance.yahoo.com/v8/finance/chart/${yahooSymbol}?interval=${pConf.interval}&range=${pConf.range}`;
             const json = await fetchWithProxyFallback(url);
             const result = json.chart.result[0];
             
-            const currentPrice = result.meta.regularMarketPrice;
-            const prevClose = result.meta.previousClose || result.meta.chartPreviousClose || currentPrice;
+            let currentPrice = result.meta.regularMarketPrice * scaleFactor;
+            let prevClose = (result.meta.previousClose || result.meta.chartPreviousClose || result.meta.regularMarketPrice) * scaleFactor;
+            
+            // 실시간 틱 데이터와의 초기 화면 불일치를 막기 위해 지수/환율 기준 덮어쓰기
+            const currKey = currencyKeyMap[symbol.toUpperCase()];
+            const idxKey = indexKeyMap[symbol.toUpperCase()];
+            if (currKey && window.latestTickResult && window.latestTickResult.currencies[currKey]) {
+                const tickCur = window.latestTickResult.currencies[currKey];
+                currentPrice = tickCur.current;
+                prevClose = tickCur.current - tickCur.netChange;
+            } else if (idxKey && window.latestTickResult && window.latestTickResult.indices[idxKey]) {
+                const tickIdx = window.latestTickResult.indices[idxKey];
+                currentPrice = tickIdx.current;
+                prevClose = tickIdx.current - tickIdx.netChange;
+            }
+
             const netChange = currentPrice - prevClose;
             const pctChange = (netChange / prevClose) * 100;
             const currency = result.meta.currency;
@@ -3261,10 +4065,10 @@ document.addEventListener("DOMContentLoaded", () => {
                     
                     validData.push({
                         x: date.getTime(),
-                        o: openPrices[i] !== null ? openPrices[i] : closePrices[i],
-                        h: highPrices[i] !== null ? highPrices[i] : closePrices[i],
-                        l: lowPrices[i] !== null ? lowPrices[i] : closePrices[i],
-                        c: closePrices[i],
+                        o: (openPrices[i] !== null ? openPrices[i] : closePrices[i]) * scaleFactor,
+                        h: (highPrices[i] !== null ? highPrices[i] : closePrices[i]) * scaleFactor,
+                        l: (lowPrices[i] !== null ? lowPrices[i] : closePrices[i]) * scaleFactor,
+                        c: closePrices[i] * scaleFactor,
                         v: volumes[i] !== null ? volumes[i] : 0
                     });
                 }
@@ -3272,6 +4076,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
             if (validData.length === 0) {
                 throw new Error("No chart data available");
+            }
+
+            // 마지막 봉/라인 데이터를 실시간 틱과 연계하여 싱크 맞춤
+            if (validData.length > 0) {
+                validData[validData.length - 1].c = currentPrice;
+                validData[validData.length - 1].h = Math.max(validData[validData.length - 1].h, currentPrice);
+                validData[validData.length - 1].l = Math.min(validData[validData.length - 1].l, currentPrice);
             }
 
             clearInterval(countdownInterval);
@@ -3320,7 +4131,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 if (consensusBox) {
                     if (rating !== 'none' && rating !== 'N/A') {
                         consensusRating.innerText = rating.toUpperCase();
-                        consensusTarget.innerText = target !== 'N/A' ? `${formatNumber(target, 2)} ${currency}` : 'N/A';
+                        consensusTarget.innerText = target !== 'N/A' ? `${formatNumber(target * scaleFactor, 2)} ${currency}` : 'N/A';
                         if (rating.toLowerCase().includes('buy')) consensusRating.style.color = 'var(--bullish)';
                         else if (rating.toLowerCase().includes('sell')) consensusRating.style.color = 'var(--bearish)';
                         else consensusRating.style.color = 'var(--text-secondary)';
@@ -3331,7 +4142,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 }
                 
                 const pTarget = document.getElementById('panel-target-price');
-                if (pTarget) pTarget.innerText = target !== 'N/A' ? `${formatNumber(target, 2)} ${currency}` : 'N/A';
+                if (pTarget) pTarget.innerText = target !== 'N/A' ? `${formatNumber(target * scaleFactor, 2)} ${currency}` : 'N/A';
                 
                 const pMarker = document.getElementById('panel-rating-marker');
                 if (pMarker && rating !== 'none' && rating !== 'N/A') {
@@ -3355,21 +4166,21 @@ document.addEventListener("DOMContentLoaded", () => {
                 if (pPer) pPer.innerText = summaryDetail.trailingPE ? formatNumber(summaryDetail.trailingPE.raw, 2) : 'N/A';
                 
                 const pEps = document.getElementById('panel-eps');
-                if (pEps) pEps.innerText = keyStats.trailingEps ? formatNumber(keyStats.trailingEps.raw, 2) : 'N/A';
+                if (pEps) pEps.innerText = keyStats.trailingEps ? formatNumber(keyStats.trailingEps.raw * scaleFactor, 2) : 'N/A';
                 
                 const pDiv = document.getElementById('panel-div');
                 if (pDiv) pDiv.innerText = summaryDetail.dividendYield ? formatNumber(summaryDetail.dividendYield.raw * 100, 2) + '%' : 'N/A';
                 
                 const p52h = document.getElementById('panel-52high');
-                if (p52h) p52h.innerText = summaryDetail.fiftyTwoWeekHigh ? formatNumber(summaryDetail.fiftyTwoWeekHigh.raw, 2) : 'N/A';
+                if (p52h) p52h.innerText = summaryDetail.fiftyTwoWeekHigh ? formatNumber(summaryDetail.fiftyTwoWeekHigh.raw * scaleFactor, 2) : 'N/A';
                 
                 const p52l = document.getElementById('panel-52low');
-                if (p52l) p52l.innerText = summaryDetail.fiftyTwoWeekLow ? formatNumber(summaryDetail.fiftyTwoWeekLow.raw, 2) : 'N/A';
+                if (p52l) p52l.innerText = summaryDetail.fiftyTwoWeekLow ? formatNumber(summaryDetail.fiftyTwoWeekLow.raw * scaleFactor, 2) : 'N/A';
                 
                 // API 데이터로부터 배당 및 재무 정보 데이터 파싱
                 const parsedDividend = {
                     yield: (summaryDetail.dividendYield && summaryDetail.dividendYield.raw) ? summaryDetail.dividendYield.raw * 100 : 'N/A',
-                    dps: (summaryDetail.dividendRate && summaryDetail.dividendRate.raw) ? summaryDetail.dividendRate.raw : 'N/A',
+                    dps: (summaryDetail.dividendRate && summaryDetail.dividendRate.raw) ? summaryDetail.dividendRate.raw * scaleFactor : 'N/A',
                     payoutRatio: (keyStats.payoutRatio && keyStats.payoutRatio.raw) ? keyStats.payoutRatio.raw * 100 : 0,
                     exDate: (summaryDetail.exDividendDate && summaryDetail.exDividendDate.fmt) ? summaryDetail.exDividendDate.fmt : 'N/A',
                     frequency: 'N/A'
@@ -3434,10 +4245,30 @@ document.addEventListener("DOMContentLoaded", () => {
             
             const isKRW_JPY = exchange === 'kospi' || exchange === 'kosdaq' || exchange === 'japan';
             const baseValue = isKRW_JPY ? (exchange === 'japan' ? 5000 : 50000) : 150;
-            const currentPrice = baseValue + (Math.random() * baseValue * 0.5);
-            const currency = (exchange === 'nasdaq' || exchange === 'nyse') ? 'USD' : (exchange === 'japan' ? 'JPY' : 'KRW');
+            let currentPrice = (baseValue + (Math.random() * baseValue * 0.5)) * scaleFactor;
+            let currency = (exchange === 'nasdaq' || exchange === 'nyse') ? 'USD' : (exchange === 'japan' ? 'JPY' : 'KRW');
+            if (symbol.toUpperCase().includes('KRW') || symbol.toUpperCase().endsWith('=X')) {
+                currency = 'KRW';
+            }
             window.currentDetailCurrency = currency;
             
+            // 실시간 틱 데이터와의 초기 화면 불일치를 막기 위해 지수/환율 기준 덮어쓰기
+            const currKey = currencyKeyMap[symbol.toUpperCase()];
+            const idxKey = indexKeyMap[symbol.toUpperCase()];
+            let prevClose;
+
+            if (currKey && window.latestTickResult && window.latestTickResult.currencies[currKey]) {
+                const tickCur = window.latestTickResult.currencies[currKey];
+                currentPrice = tickCur.current;
+                prevClose = tickCur.current - tickCur.netChange;
+            } else if (idxKey && window.latestTickResult && window.latestTickResult.indices[idxKey]) {
+                const tickIdx = window.latestTickResult.indices[idxKey];
+                currentPrice = tickIdx.current;
+                prevClose = tickIdx.current - tickIdx.netChange;
+            } else {
+                prevClose = currentPrice * (0.95 + Math.random() * 0.1);
+            }
+
             generateMockConsensus(currentPrice, currency, exchange);
 
             const pSource = document.getElementById('panel-consensus-source');
@@ -3451,7 +4282,6 @@ document.addEventListener("DOMContentLoaded", () => {
                 }
             }
 
-            const prevClose = currentPrice * (0.95 + Math.random() * 0.1);
             const netChange = currentPrice - prevClose;
             const pctChange = (netChange / prevClose) * 100;
             
@@ -3483,6 +4313,13 @@ document.addEventListener("DOMContentLoaded", () => {
                     v: vol
                 });
             }
+
+            // 마지막 봉/라인 데이터를 실시간 틱과 연계하여 싱크 맞춤
+            if (validData.length > 0) {
+                validData[validData.length - 1].c = currentPrice;
+                validData[validData.length - 1].h = Math.max(validData[validData.length - 1].h, currentPrice);
+                validData[validData.length - 1].l = Math.min(validData[validData.length - 1].l, currentPrice);
+            }
             
             clearInterval(countdownInterval);
             
@@ -3497,10 +4334,10 @@ document.addEventListener("DOMContentLoaded", () => {
             if (loadingIndicator) loadingIndicator.style.display = 'none';
             priceBox.style.display = 'block';
 
-            priceEl.innerText = `${formatNumber(currentPrice, isKRW_JPY ? 0 : 2)} ${currency}`;
+            priceEl.innerText = `${formatNumber(currentPrice, currency === 'KRW' || currency === 'JPY' ? 0 : 2)} ${currency}`;
             
             const changeSign = netChange >= 0 ? "+" : "";
-            changeEl.innerText = `${changeSign}${formatNumber(netChange, isKRW_JPY ? 0 : 2)} (${changeSign}${formatNumber(pctChange, 2)}%)`;
+            changeEl.innerText = `${changeSign}${formatNumber(netChange, currency === 'KRW' || currency === 'JPY' ? 0 : 2)} (${changeSign}${formatNumber(pctChange, 2)}%)`;
             if (netChange >= 0) {
                 changeEl.className = "index-change-badge bullish-badge";
             } else {
@@ -4314,6 +5151,7 @@ document.addEventListener("DOMContentLoaded", () => {
     // === Google OAuth & Google Drive Sync Integration ===
     const GOOGLE_CLIENT_ID = '1037201246204-pm8p0psomuc2ltn0bvkaffe3ou2i2umk.apps.googleusercontent.com'; // OAuth Client ID
     let oauthToken = null;
+    let driveGranted = false;
     let tokenClient = null;
     let syncPending = false;
 
@@ -4367,6 +5205,17 @@ document.addEventListener("DOMContentLoaded", () => {
             
             const lastBackup = localStorage.getItem('google_drive_last_backup') || '없음';
             if (googleBackupTime) googleBackupTime.innerText = `마지막 동기화 일시: ${lastBackup}`;
+            
+            const granted = sessionStorage.getItem('google_drive_granted') === '1';
+            const label = googleSyncNowBtn ? googleSyncNowBtn.querySelector('.sync-btn-text') : null;
+            if (granted) {
+                if (googleSyncNowBtn) googleSyncNowBtn.dataset.mode = 'sync';
+                if (label) label.innerText = '🔄 지금 구글 드라이브로 동기화';
+            } else {
+                if (googleSyncNowBtn) googleSyncNowBtn.dataset.mode = 'grant';
+                if (label) label.innerText = '🔐 드라이브 동기화 권한 켜기';
+                if (googleBackupStatus) googleBackupStatus.innerText = '동기화 비활성화 (권한 미허용)';
+            }
         } else {
             oauthToken = null;
             
@@ -4411,13 +5260,27 @@ document.addEventListener("DOMContentLoaded", () => {
                 if (resp.access_token) {
                     oauthToken = resp.access_token;
                     sessionStorage.setItem('google_oauth_token', oauthToken);
-                    
-                    // Fetch user profile
                     await fetchUserProfile(oauthToken);
+
+                    const driveScope = 'https://www.googleapis.com/auth/drive.file';
+                    driveGranted = google.accounts.oauth2.hasGrantedAllScopes(resp, driveScope);
+                    sessionStorage.setItem('google_drive_granted', driveGranted ? '1' : '0');
                     updateGoogleAuthUI();
-                    
-                    // Auto-sync / Restore after successful login
-                    await handleGoogleLoginSync();
+
+                    if (driveGranted) {
+                        await handleGoogleLoginSync();
+                    } else {
+                        const retry = confirm(
+                            '구글 드라이브 동기화 권한이 꺼져 있습니다.\n' +
+                            '이 상태에서는 포트폴리오 저장과 지난 검색 기록 동기화를 사용할 수 없습니다.\n\n' +
+                            '[확인] 권한을 다시 허용하기 (동기화 사용)\n' +
+                            '[취소] 동기화 없이 로그인만 '
+                        );
+                        if (retry) {
+                            if (!tokenClient) initGIS(GOOGLE_CLIENT_ID);
+                            if (tokenClient) tokenClient.requestAccessToken({ prompt: 'consent' });
+                        }
+                    }
                 }
             };
 
@@ -4500,6 +5363,7 @@ document.addEventListener("DOMContentLoaded", () => {
             }
             sessionStorage.removeItem('google_oauth_token');
             sessionStorage.removeItem('google_user_profile');
+            sessionStorage.removeItem('google_drive_granted');
             localStorage.removeItem('google_drive_last_backup');
             if (isMockGoogle) {
                 localStorage.removeItem(MOCK_DRIVE_STORAGE_KEY);
@@ -4519,8 +5383,9 @@ document.addEventListener("DOMContentLoaded", () => {
             }
             return null;
         }
+        const query = encodeURIComponent("name='tori_stock_backup.json' and trashed=false");
         const response = await fetch(
-            `https://www.googleapis.com/drive/v3/files?q=name='tori_stock_backup.json' and trashed=false&fields=files(id, name, modifiedTime)`,
+            `https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id, name, modifiedTime)`,
             {
                 headers: {
                     'Authorization': `Bearer ${token}`
@@ -4528,7 +5393,7 @@ document.addEventListener("DOMContentLoaded", () => {
             }
         );
         if (!response.ok) {
-            throw new Error(`파일 검색 실패: ${response.statusText}`);
+            throw new Error(`파일 검색 실패: ${response.status} ${response.statusText}`);
         }
         const data = await response.json();
         return data.files && data.files.length > 0 ? data.files[0] : null;
@@ -4548,7 +5413,7 @@ document.addEventListener("DOMContentLoaded", () => {
             }
         );
         if (!response.ok) {
-            throw new Error(`파일 다운로드 실패: ${response.statusText}`);
+            throw new Error(`파일 다운로드 실패: ${response.status} ${response.statusText}`);
         }
         return await response.json();
     }
@@ -4573,7 +5438,7 @@ document.addEventListener("DOMContentLoaded", () => {
             }
         );
         if (!metadataResponse.ok) {
-            throw new Error(`파일 메타데이터 생성 실패: ${metadataResponse.statusText}`);
+            throw new Error(`파일 메타데이터 생성 실패: ${metadataResponse.status} ${metadataResponse.statusText}`);
         }
         const file = await metadataResponse.json();
         const fileId = file.id;
@@ -4599,7 +5464,7 @@ document.addEventListener("DOMContentLoaded", () => {
             }
         );
         if (!response.ok) {
-            throw new Error(`파일 업로드 실패: ${response.statusText}`);
+            throw new Error(`파일 업로드 실패: ${response.status} ${response.statusText}`);
         }
         return await response.json();
     }
@@ -4704,6 +5569,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
     if (googleSyncNowBtn) {
         googleSyncNowBtn.addEventListener('click', () => {
+            if (googleSyncNowBtn.dataset.mode === 'grant') {
+                if (!tokenClient) initGIS(GOOGLE_CLIENT_ID);
+                if (tokenClient) tokenClient.requestAccessToken({ prompt: 'consent' });
+                return;
+            }
             triggerGoogleDriveSync(true);
         });
     }

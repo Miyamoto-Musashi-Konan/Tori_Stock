@@ -518,7 +518,7 @@ header {
 /* 통화/환율 그리드 및 레이아웃 */
 .market-grid-container {
     display: grid;
-    grid-template-columns: 2fr 1fr;
+    grid-template-columns: 1fr 1.8fr;
     gap: 24px;
     margin-bottom: 40px;
 }
@@ -529,7 +529,19 @@ header {
     }
 }
 
-.exchange-section, .dollar-basis-section {
+.exchange-section {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    background: rgba(13, 20, 38, 0.4);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    backdrop-filter: blur(25px) saturate(160%);
+    border-radius: 18px;
+    padding: 24px;
+    box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.08), 0 12px 32px rgba(0, 0, 0, 0.2);
+}
+
+.dollar-basis-section {
     background: rgba(13, 20, 38, 0.4);
     border: 1px solid rgba(255, 255, 255, 0.07);
     backdrop-filter: blur(25px) saturate(160%);
@@ -541,55 +553,91 @@ header {
 .exchange-grid {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
+    grid-template-rows: repeat(2, 1fr);
     gap: 16px;
+    flex: 1;
 }
 
 .currency-card {
     background: rgba(255, 255, 255, 0.02);
     border: 1px solid rgba(255, 255, 255, 0.05);
-    border-radius: 12px;
-    padding: 16px;
+    border-radius: 16px;
+    padding: 16px 12px;
     display: flex;
     flex-direction: column;
-    justify-content: space-between;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    aspect-ratio: auto;
+    height: 100%;
+    min-height: 140px;
+    box-sizing: border-box;
     transition: all 0.25s cubic-bezier(0.25, 0.8, 0.25, 1);
     box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.05);
+    cursor: pointer;
 }
 
 .currency-card:hover {
     background: rgba(255, 255, 255, 0.06);
     border-color: rgba(255, 255, 255, 0.15);
-    box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.15), 0 8px 20px rgba(0, 0, 0, 0.15);
-    transform: translateY(-2px);
+    box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.15), 0 8px 24px rgba(99, 102, 241, 0.15);
+    transform: translateY(-4px);
 }
 
 .curr-flag-name {
     display: flex;
+    flex-direction: column;
     align-items: center;
-    gap: 10px;
+    gap: 8px;
     margin-bottom: 12px;
 }
 
+.curr-flag-name div {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
 .curr-emoji {
-    font-size: 24px;
+    font-size: 26px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+    transition: all 0.25s ease;
+}
+
+.currency-card:hover .curr-emoji {
+    transform: scale(1.1);
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.15);
 }
 
 .curr-code {
     font-family: var(--font-heading);
     font-weight: 700;
     font-size: 14px;
+    margin-top: 4px;
 }
 
 .curr-name {
     font-size: 11px;
     color: var(--text-secondary);
     display: block;
+    margin-top: 2px;
 }
 
 .curr-value-row {
     display: flex;
-    justify-content: space-between;
-    align-items: flex-end;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    width: 100%;
 }
 
 .curr-value {
@@ -600,57 +648,42 @@ header {
 }
 
 .curr-change {
-    font-size: 12px;
+    font-size: 11.5px;
     font-weight: 600;
 }
 
 /* 달러 대비 가치 변동 리스트 */
-.dollar-basis-list {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
+/* 새로운 달러 대비 가치 변동 차트 컨테이너 */
+.dollar-basis-chart-container {
+    position: relative;
+    height: 420px;
+    width: 100%;
+    background: rgba(255, 255, 255, 0.01);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 14px;
+    padding: 16px;
+    box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.04);
+    transition: all 0.25s cubic-bezier(0.25, 0.8, 0.25, 1);
+    cursor: pointer;
+    overflow: hidden;
 }
 
-.dollar-basis-item {
-    background: rgba(255, 255, 255, 0.02);
-    border: 1px solid rgba(255, 255, 255, 0.04);
-    padding: 14px 18px;
-    border-radius: 12px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    transition: all 0.2s ease;
+.dollar-basis-chart-container:hover {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(255, 255, 255, 0.12);
+    transform: translateY(-2px);
+    box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.1), 0 8px 24px rgba(0, 0, 0, 0.15);
 }
 
-.dollar-basis-item:hover {
+.basis-tab-btn.active {
+    background: rgba(255, 255, 255, 0.08) !important;
+    color: var(--accent) !important;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.basis-tab-btn:hover:not(.active) {
     background: rgba(255, 255, 255, 0.04);
-}
-
-.basis-name {
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--text-primary);
-}
-
-.basis-value-group {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-}
-
-.basis-val {
-    font-family: var(--font-heading);
-    font-weight: 600;
-    font-size: 14px;
-}
-
-.basis-change {
-    font-size: 12px;
-    font-weight: 700;
-    padding: 3px 8px;
-    border-radius: 6px;
-    min-width: 60px;
-    text-align: right;
+    color: var(--text-primary) !important;
 }
 
 /* 상승/하락 컬러 바인딩 */
@@ -840,6 +873,7 @@ header {
     flex-direction: column;
     justify-content: space-between;
     box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.05);
+    cursor: pointer;
 }
 
 .travel-card:hover {
@@ -2801,3 +2835,56 @@ footer a:hover {
     color: var(--accent) !important;
     text-shadow: 0 0 6px var(--accent-glow);
 }
+
+@media (max-width: 768px) {
+    .exchange-section, .dollar-basis-section {
+        padding: 14px !important;
+        max-width: 100% !important;
+        overflow-x: hidden !important;
+        box-sizing: border-box !important;
+    }
+    .dollar-basis-chart-container {
+        padding: 6px !important;
+        height: 340px !important;
+        max-width: 100% !important;
+        overflow: hidden !important;
+    }
+    .market-summary-box {
+        padding: 16px !important;
+    }
+    .market-grid-container {
+        max-width: 100% !important;
+        overflow-x: hidden !important;
+    }
+    .exchange-grid {
+        grid-template-columns: repeat(2, 1fr) !important;
+        gap: 10px !important;
+    }
+    .currency-card {
+        min-height: 110px !important;
+        padding: 12px 8px !important;
+    }
+    .curr-emoji {
+        width: 38px !important;
+        height: 38px !important;
+        font-size: 20px !important;
+    }
+    .curr-value {
+        font-size: 15px !important;
+    }
+    .curr-code {
+        font-size: 12px !important;
+    }
+    .curr-name {
+        font-size: 10px !important;
+    }
+    .curr-change {
+        font-size: 10px !important;
+    }
+    /* 달러 대비 차트 탭 버튼 줄바꿈 */
+    .dollar-basis-section .section-title-wrapper {
+        flex-direction: column !important;
+        align-items: flex-start !important;
+        gap: 10px !important;
+    }
+

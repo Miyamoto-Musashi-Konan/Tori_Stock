@@ -401,63 +401,28 @@
 
                 <!-- 주요국 통화 달러대비 가치 변동률 -->
                 <section class="dollar-basis-section">
-                    <h3 class="status-label" style="margin-bottom: 16px;">달러 대비 환율 및 통화가치 변동 (USD Basis)</h3>
-                    <div class="dollar-basis-list" id="dollar-basis-list">
-                        <!-- EUR/USD -->
-                        <div class="dollar-basis-item" style="display: flex; align-items: center; justify-content: space-between; padding: 10px 14px;">
-                            <div style="display: flex; align-items: center; flex: 1;">
-                                <canvas class="mini-candle-canvas" id="mini-candle-eur" width="80" height="32"></canvas>
-                                <span class="basis-name" id="basis-lbl-eur" style="font-weight: 600;">유로/달러 (EUR/USD)</span>
-                            </div>
-                            <div class="basis-value-group" style="text-align: right; display: flex; align-items: center; gap: 8px;">
-                                <span class="basis-val" id="basis-val-eur" style="font-weight: 700;">1.0815</span>
-                                <span class="basis-change bearish-badge" id="basis-chg-eur">-0.45%</span>
-                            </div>
-                        </div>
-                        <!-- USD/JPY -->
-                        <div class="dollar-basis-item" style="display: flex; align-items: center; justify-content: space-between; padding: 10px 14px;">
-                            <div style="display: flex; align-items: center; flex: 1;">
-                                <canvas class="mini-candle-canvas" id="mini-candle-jpy" width="80" height="32"></canvas>
-                                <span class="basis-name" id="basis-lbl-jpy" style="font-weight: 600;">달러/엔 (USD/JPY)</span>
-                            </div>
-                            <div class="basis-value-group" style="text-align: right; display: flex; align-items: center; gap: 8px;">
-                                <span class="basis-val" id="basis-val-jpy" style="font-weight: 700;">157.04</span>
-                                <span class="basis-change bullish-badge" id="basis-chg-jpy">+0.80%</span>
-                            </div>
-                        </div>
-                        <!-- GBP/USD -->
-                        <div class="dollar-basis-item" style="display: flex; align-items: center; justify-content: space-between; padding: 10px 14px;">
-                            <div style="display: flex; align-items: center; flex: 1;">
-                                <canvas class="mini-candle-canvas" id="mini-candle-gbp" width="80" height="32"></canvas>
-                                <span class="basis-name" id="basis-lbl-gbp" style="font-weight: 600;">파운드/달러 (GBP/USD)</span>
-                            </div>
-                            <div class="basis-value-group" style="text-align: right; display: flex; align-items: center; gap: 8px;">
-                                <span class="basis-val" id="basis-val-gbp" style="font-weight: 700;">1.2678</span>
-                                <span class="basis-change bearish-badge" id="basis-chg-gbp">-0.25%</span>
-                            </div>
-                        </div>
-                        <!-- USD/CNY -->
-                        <div class="dollar-basis-item" style="display: flex; align-items: center; justify-content: space-between; padding: 10px 14px;">
-                            <div style="display: flex; align-items: center; flex: 1;">
-                                <canvas class="mini-candle-canvas" id="mini-candle-cny" width="80" height="32"></canvas>
-                                <span class="basis-name" id="basis-lbl-cny" style="font-weight: 600;">달러/위안 (USD/CNY)</span>
-                            </div>
-                            <div class="basis-value-group" style="text-align: right; display: flex; align-items: center; gap: 8px;">
-                                <span class="basis-val" id="basis-val-cny" style="font-weight: 700;">7.2480</span>
-                                <span class="basis-change bullish-badge" id="basis-chg-cny">+0.08%</span>
-                            </div>
-                        </div>
-                        <!-- USD/KRW -->
-                        <div class="dollar-basis-item" style="display: flex; align-items: center; justify-content: space-between; padding: 10px 14px;">
-                            <div style="display: flex; align-items: center; flex: 1;">
-                                <canvas class="mini-candle-canvas" id="mini-candle-krw" width="80" height="32"></canvas>
-                                <span class="basis-name" id="basis-lbl-krw" style="font-weight: 600;">달러/원 (USD/KRW)</span>
-                            </div>
-                            <div class="basis-value-group" style="text-align: right; display: flex; align-items: center; gap: 8px;">
-                                <span class="basis-val" id="basis-val-krw" style="font-weight: 700;">1,352.40</span>
-                                <span class="basis-change bullish-badge" id="basis-chg-krw">+0.29%</span>
-                            </div>
-                        </div>
+                    <h3 class="status-label" style="margin-bottom: 4px;">주요 국가의 달러 대비 통화가치 변동률</h3>
+                    <p class="status-subtitle" style="font-size: 11.5px; color: var(--text-muted); margin-bottom: 16px; font-weight: 500;">
+                        단위: %, 현지시간 연초(2026년 1월 1일) 대비 현재 실시간 통화가치 변동률
+                    </p>
+                    
+                    <!-- 기간 선택 탭 (Daily, 1 Week, 1 Month, YTD) -->
+                    <div class="dollar-basis-tabs" style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 16px; background: rgba(255,255,255,0.03); padding: 4px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.05); max-width: 100%; cursor: default;" onclick="event.stopPropagation();">
+                        <button class="basis-tab-btn active" data-range="ytd" style="background: transparent; border: none; color: var(--text-secondary); padding: 5px 12px; border-radius: 6px; font-size: 11px; font-weight: 600; cursor: pointer; transition: all 0.2s;">YTD (연초대비)</button>
+                        <button class="basis-tab-btn" data-range="1m" style="background: transparent; border: none; color: var(--text-secondary); padding: 5px 12px; border-radius: 6px; font-size: 11px; font-weight: 600; cursor: pointer; transition: all 0.2s;">1 Month (1달전)</button>
+                        <button class="basis-tab-btn" data-range="1w" style="background: transparent; border: none; color: var(--text-secondary); padding: 5px 12px; border-radius: 6px; font-size: 11px; font-weight: 600; cursor: pointer; transition: all 0.2s;">1 Week (1주전)</button>
+                        <button class="basis-tab-btn" data-range="daily" style="background: transparent; border: none; color: var(--text-secondary); padding: 5px 12px; border-radius: 6px; font-size: 11px; font-weight: 600; cursor: pointer; transition: all 0.2s;">Daily (전일대비)</button>
+                    </div>
+
+                    <div class="dollar-basis-chart-container" id="dollar-basis-chart-card" style="position: relative; height: 360px; width: 100%; cursor: pointer;">
+                        <canvas id="chart-dollar-basis"></canvas>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 12px; font-size: 11px; color: var(--text-muted);">
+                        <span>자료: 한국은행, 인베스팅닷컴 (클릭 시 상세페이지 이동)</span>
+                        <span style="display: flex; align-items: center; gap: 4px;">
+                            실시간 반영 
+                            <span class="pulse-dot"></span>
+                        </span>
                     </div>
                 </section>
             </div>
@@ -495,9 +460,12 @@
                 </div>
 
                 <!-- 대형 historical 차트 영역 -->
-                <div class="big-chart-wrapper">
+                <div class="big-chart-wrapper" style="cursor: pointer;" title="클릭 시 BIS 실질실효환율 통계 페이지로 이동">
                     <canvas id="chart-historical-main"></canvas>
                 </div>
+
+                <!-- 실시간 역사적 분석 해설 카드 -->
+                <div class="side-panel-card" id="historical-dynamic-analysis" style="margin-top: 24px; display: none; background: rgba(13, 20, 38, 0.6); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 12px; padding: 20px; box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.08);"></div>
 
                 <!-- 역사적 사건 요약 배너 -->
                 <div class="crisis-annotation-banner">
@@ -1220,8 +1188,12 @@
                 <span style="color: rgba(255,255,255,0.15);">|</span>
                 <a href="service2026_release.pdf" target="_blank" class="footer-link">서비스이용약관</a>
             </div>
-            <p>© 2026 Konan J 주식 환율 알리미 / 체인소맨 금융정보서비스. Real-time and historical financial API data synced.</p>
-            <p style="margin-top: 6px;">Designed beautifully and animated with glassmorphic elements.</p>
+            <p style="max-width: 800px; margin: 0 auto; line-height: 1.6; font-size: 11px; color: var(--text-muted);">
+                The information displayed in this web application is provided "as is," without any warranty as to its accuracy or completeness. We accept no liability for any financial loss arising from the use of this information in making investment decisions, whether the information is correct or contains errors. All investment decisions are made solely at your own risk and responsibility.
+            </p>
+            <p style="margin-top: 8px; font-size: 11.5px; color: var(--text-secondary); font-weight: 500;">
+                © 2026 Miyamoto Musashi. All rights reserved. Unauthorized reproduction or distribution of any part of this content is strictly prohibited.
+            </p>
         </footer>
     </div>
 
@@ -1334,13 +1306,13 @@
                         </div>
                     </div>
 
-                    <div style="display: flex; flex-direction: column; gap: 10px;">
+                    <div style="display: flex; flex-direction: column; align-items: center; gap: 10px;">
                         <button class="portfolio-action-btn" id="google-sync-now-btn" style="width: 100%; background: linear-gradient(135deg, var(--accent) 0%, #00b8d4 100%); color: #0f172a; border-color: rgba(0, 242, 254, 0.4); font-weight: 700; display: flex; align-items: center; justify-content: center; gap: 8px;">
                             <span class="sync-spinner" style="display: none; width: 14px; height: 14px; border: 2px solid #0f172a; border-top-color: transparent; border-radius: 50%; animation: spin 1s linear infinite;"></span>
                             <span class="sync-btn-text">🔄 지금 구글 드라이브로 동기화</span>
                         </button>
-                        <button class="portfolio-action-btn" id="google-logout-btn" style="width: 100%; background: rgba(244, 63, 94, 0.08); border-color: rgba(244, 63, 94, 0.15); color: #f43f5e; font-weight: 700;">
-                            연동 해제 (로그아웃)
+                        <button class="portfolio-action-btn" id="google-logout-btn" style="width: 100%; background: rgba(244, 63, 94, 0.08); border-color: rgba(244, 63, 94, 0.15); color: #f43f5e; font-weight: 700; display: flex; justify-content: center; align-items: center; gap: 8px;">
+                            🚪 연동 해제 (로그아웃)
                         </button>
                     </div>
                 </div>
@@ -1351,7 +1323,7 @@
     <!-- 스크립트 연결 -->
     <script src="historical-data.js"></script>
     <script src="mock-data.js"></script>
-    <script src="app.js"></script>
+    <script src="app.js?v=2"></script>
 
     <!-- 차트 실시간 정보 표시 동의 팝업 (TradingView 스타일, 세션당 1회) -->
     <div id="chart-info-consent-popup" style="
