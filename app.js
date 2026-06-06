@@ -4764,15 +4764,22 @@ document.addEventListener("DOMContentLoaded", () => {
 
             html += `
                 <div class="portfolio-item" data-index="${index}">
-                    <div class="portfolio-item-info">
-                        <span class="portfolio-item-title">${item.name} (${item.symbol})</span>
-                        <span class="portfolio-item-sub">${item.exchange.toUpperCase()} | 현재가: ${formatNumber(price, currency === 'KRW' || currency === 'JPY' ? 0 : 2)} ${currency}</span>
+                    <div class="portfolio-item-main">
+                        <div class="portfolio-item-left">
+                            <span class="portfolio-item-symbol">${item.symbol}</span>
+                            <span class="portfolio-item-name-exch">${item.exchange.toUpperCase()} | ${item.name}</span>
+                        </div>
+                        <div class="portfolio-item-right">
+                            <span class="portfolio-item-price-val">${formatNumber(price, currency === 'KRW' || currency === 'JPY' ? 0 : 2)} ${currency}</span>
+                            <span class="portfolio-item-krw-val" id="portfolio-item-krw-${index}">평가: ${formatNumber(totalKrwVal, 0)} 원</span>
+                        </div>
                     </div>
+                    <div class="portfolio-item-divider"></div>
                     <div class="portfolio-item-controls">
-                        <span class="portfolio-item-price" id="portfolio-item-krw-${index}">
-                            평가금액: ${formatNumber(totalKrwVal, 0)} 원
-                        </span>
-                        <input type="number" class="portfolio-qty-input" value="${item.quantity}" min="0" data-index="${index}" style="width: 70px;">
+                        <div class="portfolio-qty-wrapper">
+                            <span class="portfolio-qty-label">수량</span>
+                            <input type="number" class="portfolio-qty-input" value="${item.quantity}" min="0" data-index="${index}">
+                        </div>
                         <button class="portfolio-delete-btn" data-index="${index}">삭제</button>
                     </div>
                 </div>
@@ -4798,7 +4805,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 const item = portfolio[idx];
                 if (item.cachedPrice) {
                     const totalKrwVal = item.cachedPrice * newQty * item.cachedRate;
-                    document.getElementById(`portfolio-item-krw-${idx}`).innerText = `평가금액: ${formatNumber(totalKrwVal, 0)} 원`;
+                    document.getElementById(`portfolio-item-krw-${idx}`).innerText = `평가: ${formatNumber(totalKrwVal, 0)} 원`;
                 }
             });
         });

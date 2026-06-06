@@ -2112,7 +2112,16 @@ footer a:hover {
     border-color: rgba(255, 255, 255, 0.12);
 }
 
-.portfolio-col-info {
+.portfolio-item-main {
+    display: flex;
+    flex: 2;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
+    min-width: 0;
+}
+
+.portfolio-item-left {
     display: flex;
     flex-direction: column;
     gap: 2px;
@@ -2120,36 +2129,34 @@ footer a:hover {
     min-width: 0;
 }
 
-.portfolio-item-title {
+.portfolio-item-symbol {
     font-size: 14px;
-    font-weight: 600;
+    font-weight: 700;
     color: var(--text-primary);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
 
-.portfolio-item-sub {
+.portfolio-item-name-exch {
     font-size: 11px;
     color: var(--text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
-.portfolio-col-price {
+.portfolio-item-right {
     display: flex;
     flex-direction: column;
     align-items: flex-end;
     justify-content: center;
-    gap: 4px;
-    flex: 1;
-    min-width: 90px;
+    gap: 2px;
+    flex: 1.0;
+    min-width: 100px;
 }
 
-.portfolio-price-label {
-    font-size: 11px;
-    color: var(--text-muted);
-}
-
-.portfolio-item-price {
+.portfolio-item-price-val {
     font-family: var(--font-heading);
     font-size: 13px;
     font-weight: 600;
@@ -2157,13 +2164,37 @@ footer a:hover {
     text-align: right;
 }
 
-.portfolio-col-controls {
+.portfolio-item-krw-val {
+    font-size: 11px;
+    color: var(--text-muted);
+    text-align: right;
+}
+
+.portfolio-item-divider {
+    display: none;
+    height: 1px;
+    background: rgba(255, 255, 255, 0.06);
+    margin: 4px 0;
+}
+
+.portfolio-item-controls {
     display: flex;
     align-items: center;
     justify-content: flex-end;
     gap: 12px;
-    flex: 0.8;
-    min-width: 120px;
+    flex: 1.2;
+    min-width: 150px;
+}
+
+.portfolio-qty-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.portfolio-qty-label {
+    font-size: 11px;
+    color: var(--text-muted);
 }
 
 .portfolio-qty-input {
@@ -2171,10 +2202,10 @@ footer a:hover {
     border: 1px solid rgba(255, 255, 255, 0.1);
     color: var(--text-primary);
     border-radius: 6px;
-    padding: 6px 10px;
+    padding: 6px 8px;
     font-family: var(--font-heading);
     font-size: 13px;
-    width: 80px;
+    width: 65px;
     text-align: right;
     outline: none;
 }
@@ -2204,12 +2235,61 @@ footer a:hover {
     cursor: pointer;
     font-size: 12px;
     transition: all 0.2s ease;
+    white-space: nowrap;
 }
 
 .portfolio-delete-btn:hover {
     background: var(--bearish);
     color: var(--text-primary);
     box-shadow: 0 0 10px var(--bearish-glow);
+}
+
+/* Mobile Optimization for Portfolio Modal */
+@media (max-width: 600px) {
+    .portfolio-item {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 8px;
+        padding: 12px 14px;
+    }
+
+    .portfolio-item-main {
+        width: 100%;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 8px;
+    }
+
+    .portfolio-item-left {
+        flex: 1;
+        max-width: 60%;
+    }
+
+    .portfolio-item-right {
+        flex: none;
+        align-items: flex-end;
+        min-width: 100px;
+    }
+
+    .portfolio-item-divider {
+        display: block;
+    }
+
+    .portfolio-item-controls {
+        width: 100%;
+        justify-content: space-between;
+        gap: 0;
+        margin-top: 2px;
+        min-width: auto;
+    }
+
+    .portfolio-qty-wrapper {
+        justify-content: flex-start;
+    }
+
+    .portfolio-delete-btn {
+        padding: 5px 12px;
+    }
 }
 
 /* Modal Footer & Backtest */
