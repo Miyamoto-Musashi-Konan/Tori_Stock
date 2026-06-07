@@ -112,8 +112,18 @@
     <div class="dashboard-container">
         <!-- 상단 헤더 (상하 정렬 구조) -->
         <header class="vertical-header">
-            <div class="title-section">
-                <h1>Konan J 주식 환율 알리미</h1>
+            <div class="title-section" style="display: flex; flex-direction: column;">
+                <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                    <h1>Konan J 주식 환율 알리미</h1>
+                    <!-- 음악 ON/OFF 헤더 내장형 컨트롤러 -->
+                    <button id="btn-music-toggle" class="music-toggle-btn" title="배경 음악 켜기/끄기" style="margin: 0; padding: 6px 12px; height: 32px; border-radius: 20px;">
+                        <div class="music-icon-wrapper" style="width: 20px; height: 20px; background: rgba(255, 255, 255, 0.05); border-radius: 50%; display: flex; align-items: center; justify-content: center;">
+                            <span class="music-note-icon" style="font-size: 11px;">🎵</span>
+                        </div>
+                        <div class="music-led-indicator" style="width: 6px; height: 6px;"></div>
+                        <div class="music-switch-label" style="font-size: 10px;">OFF</div>
+                    </button>
+                </div>
                 <span class="subtitle">체인소맨 금융정보서비스</span>
             </div>
             <!-- 가로쓰기 독립된 섹션 (유리 질감) -->
@@ -1372,20 +1382,9 @@
     <!-- 배경 음악 오디오 -->
     <audio id="bg-music" src="music/EVA.mp3" loop></audio>
 
-    <!-- 음악 ON/OFF 플로팅 컨트롤러 -->
-    <div id="music-controller-container">
-        <button id="btn-music-toggle" class="music-toggle-btn" title="배경 음악 켜기/끄기">
-            <div class="music-icon-wrapper">
-                <span class="music-note-icon">🎵</span>
-            </div>
-            <div class="music-led-indicator"></div>
-            <div class="music-switch-label">OFF</div>
-        </button>
-    </div>
-
-    <!-- 로그아웃 감성 확인 모달 -->
-    <div id="google-logout-confirm-modal" class="modal">
-        <div class="modal-content logout-modal-content">
+    <!-- 로그아웃 감성 확인 모달 (정중앙 오버레이 및 페이드아웃 적용) -->
+    <div id="google-logout-confirm-modal" class="modal-overlay">
+        <div class="portfolio-modal-container logout-modal-content" style="max-width: 400px; padding: 36px 30px; text-align: center;">
             <div id="logout-confirm-stage">
                 <div class="logout-icon">❔</div>
                 <h3 class="logout-title">로그아웃 확인</h3>
