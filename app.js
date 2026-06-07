@@ -5187,11 +5187,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // UI toggle based on login status
     function updateGoogleAuthUI() {
-        const sessionToken = sessionStorage.getItem('google_oauth_token');
-        const userProfile = JSON.parse(sessionStorage.getItem('google_user_profile') || 'null');
+        const localToken = localStorage.getItem('google_oauth_token');
+        const userProfile = JSON.parse(localStorage.getItem('google_user_profile') || 'null');
         
-        if (sessionToken && userProfile) {
-            oauthToken = sessionToken;
+        if (localToken && userProfile) {
+            oauthToken = localToken;
             
             // Logged in UI
             if (loggedOutState) loggedOutState.style.display = 'none';
@@ -5213,7 +5213,7 @@ document.addEventListener("DOMContentLoaded", () => {
             const lastBackup = localStorage.getItem('google_drive_last_backup') || '없음';
             if (googleBackupTime) googleBackupTime.innerText = `마지막 동기화 일시: ${lastBackup}`;
             
-            const granted = sessionStorage.getItem('google_drive_granted') === '1';
+            const granted = localStorage.getItem('google_drive_granted') === '1';
             const label = googleSyncNowBtn ? googleSyncNowBtn.querySelector('.sync-btn-text') : null;
             if (granted) {
                 if (googleSyncNowBtn) googleSyncNowBtn.dataset.mode = 'sync';
@@ -5266,12 +5266,12 @@ document.addEventListener("DOMContentLoaded", () => {
                 }
                 if (resp.access_token) {
                     oauthToken = resp.access_token;
-                    sessionStorage.setItem('google_oauth_token', oauthToken);
+                    localStorage.setItem('google_oauth_token', oauthToken);
                     await fetchUserProfile(oauthToken);
 
                     const driveScope = 'https://www.googleapis.com/auth/drive.file';
                     driveGranted = google.accounts.oauth2.hasGrantedAllScopes(resp, driveScope);
-                    sessionStorage.setItem('google_drive_granted', driveGranted ? '1' : '0');
+                    localStorage.setItem('google_drive_granted', driveGranted ? '1' : '0');
                     updateGoogleAuthUI();
 
                     if (driveGranted) {
@@ -5321,7 +5321,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 email: 'mock-user@example.com',
                 picture: 'https://lh3.googleusercontent.com/a/default-user=s96-c'
             };
-            sessionStorage.setItem('google_user_profile', JSON.stringify(profile));
+            localStorage.setItem('google_user_profile', JSON.stringify(profile));
             return;
         }
         try {
@@ -5330,7 +5330,7 @@ document.addEventListener("DOMContentLoaded", () => {
             });
             if (res.ok) {
                 const profile = await res.json();
-                sessionStorage.setItem('google_user_profile', JSON.stringify(profile));
+                localStorage.setItem('google_user_profile', JSON.stringify(profile));
             }
         } catch (e) {
             console.error("Failed to fetch Google profile:", e);
@@ -5360,24 +5360,221 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     });
 
-    // Google Logout
-    if (googleLogoutBtn) {
+    // 미래지향적 사이버네틱 햅틱 비프음 (Web Audio API)
+    let audioCtx = null;
+
+    function getAudioContext() {
+        if (!audioCtx) {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        if (audioCtx.state === 'suspended') {
+            audioCtx.resume();
+        }
+        return audioCtx;
+    }
+
+    function playHapticSound(type = 'tap') {
+        try {
+            const ctx = getAudioContext();
+            const now = ctx.currentTime;
+            
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            
+            if (type === 'tap') {
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(800, now);
+                osc.frequency.exponentialRampToValueAtTime(150, now + 0.08);
+                
+                gain.gain.setValueAtTime(0, now);
+                gain.gain.linearRampToValueAtTime(0.06, now + 0.01);
+                gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.08);
+                
+                osc.start(now);
+                osc.stop(now + 0.08);
+            } else if (type === 'success') {
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(300, now);
+                osc.frequency.exponentialRampToValueAtTime(900, now + 0.25);
+                
+                gain.gain.setValueAtTime(0, now);
+                gain.gain.linearRampToValueAtTime(0.08, now + 0.03);
+                gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.25);
+                
+                osc.start(now);
+                osc.stop(now + 0.25);
+            } else if (type === 'cancel') {
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(600, now);
+                osc.frequency.exponentialRampToValueAtTime(200, now + 0.3);
+                
+                gain.gain.setValueAtTime(0, now);
+                gain.gain.linearRampToValueAtTime(0.07, now + 0.05);
+                gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.3);
+                
+                osc.start(now);
+                osc.stop(now + 0.3);
+            }
+        } catch (e) {
+            console.warn("Haptic sound play failed:", e);
+        }
+    }
+
+    // 전역 클릭 이벤트를 이용해 주요 인터랙션 요소들에 햅틱 비프음 바인딩
+    document.addEventListener('click', (e) => {
+        const target = e.target.closest('button, .tab-btn, .exchange-option, .crisis-card, .mode-btn, .time-btn, #google-login-btn');
+        if (target) {
+            if (target.id === 'logout-confirm-yes' || target.id === 'logout-confirm-no' || target.id === 'btn-music-toggle') {
+                return;
+            }
+            playHapticSound('tap');
+        }
+    });
+
+    // 배경 음악 제어 Logic (EVA.mp3)
+    const bgMusic = document.getElementById('bg-music');
+    const musicToggleBtn = document.getElementById('btn-music-toggle');
+    const musicLabel = musicToggleBtn ? musicToggleBtn.querySelector('.music-switch-label') : null;
+    
+    if (bgMusic) {
+        bgMusic.volume = 0.15;
+    }
+
+    function initMusic() {
+        const musicPlayPref = localStorage.getItem('music_play_preference') === 'true';
+        if (musicPlayPref && bgMusic && musicToggleBtn) {
+            musicToggleBtn.classList.add('music-on');
+            musicToggleBtn.classList.remove('music-off');
+            if (musicLabel) musicLabel.innerText = 'ON';
+            
+            const startAutoplay = () => {
+                bgMusic.play().catch(err => {
+                    console.log("Autoplay blocked, waiting for user interaction.");
+                });
+                document.removeEventListener('click', startAutoplay);
+                document.removeEventListener('touchstart', startAutoplay);
+            };
+            document.addEventListener('click', startAutoplay);
+            document.addEventListener('touchstart', startAutoplay);
+        } else if (musicToggleBtn) {
+            musicToggleBtn.classList.add('music-off');
+            musicToggleBtn.classList.remove('music-on');
+            if (musicLabel) musicLabel.innerText = 'OFF';
+        }
+    }
+
+    if (musicToggleBtn && bgMusic) {
+        musicToggleBtn.addEventListener('click', () => {
+            playHapticSound('tap');
+            const isPlaying = musicToggleBtn.classList.contains('music-on');
+            
+            if (isPlaying) {
+                bgMusic.pause();
+                musicToggleBtn.classList.remove('music-on');
+                musicToggleBtn.classList.add('music-off');
+                if (musicLabel) musicLabel.innerText = 'OFF';
+                localStorage.setItem('music_play_preference', 'false');
+            } else {
+                bgMusic.play().then(() => {
+                    musicToggleBtn.classList.add('music-on');
+                    musicToggleBtn.classList.remove('music-off');
+                    if (musicLabel) musicLabel.innerText = 'ON';
+                    localStorage.setItem('music_play_preference', 'true');
+                }).catch(err => {
+                    console.error("Music play blocked by browser:", err);
+                });
+            }
+        });
+    }
+    
+    initMusic();
+
+    // Google Logout (감성 확인 모달 플로우 적용)
+    const logoutConfirmModal = document.getElementById('google-logout-confirm-modal');
+    const logoutConfirmYesBtn = document.getElementById('logout-confirm-yes');
+    const logoutConfirmNoBtn = document.getElementById('logout-confirm-no');
+    const logoutConfirmStage = document.getElementById('logout-confirm-stage');
+    const logoutMessageStage = document.getElementById('logout-message-stage');
+    const logoutMessageEmoji = document.getElementById('logout-message-emoji');
+    const logoutMessageText = document.getElementById('logout-message-text');
+
+    if (googleLogoutBtn && logoutConfirmModal) {
         googleLogoutBtn.addEventListener('click', () => {
-            if (oauthToken && !isMockGoogle) {
-                try {
-                    google.accounts.oauth2.revokeToken(oauthToken, () => {});
-                } catch(e) {}
+            if (googleAuthModal) googleAuthModal.classList.remove('active');
+            
+            logoutConfirmStage.style.display = 'block';
+            logoutMessageStage.style.display = 'none';
+            logoutConfirmModal.classList.add('active');
+            playHapticSound('tap');
+        });
+    }
+
+    if (logoutConfirmYesBtn) {
+        logoutConfirmYesBtn.addEventListener('click', () => {
+            playHapticSound('success');
+            // Yes = 다시 돌아옴 (로그인 유지)
+            logoutConfirmStage.style.display = 'none';
+            logoutMessageStage.style.display = 'block';
+            
+            if (logoutMessageEmoji) logoutMessageEmoji.innerText = '✨';
+            if (logoutMessageText) {
+                logoutMessageText.innerText = '다시 돌아왔군요. 좋은 사람과의 만남은 언제나 인생을 풍요롭게 합니다.';
             }
-            sessionStorage.removeItem('google_oauth_token');
-            sessionStorage.removeItem('google_user_profile');
-            sessionStorage.removeItem('google_drive_granted');
-            localStorage.removeItem('google_drive_last_backup');
-            if (isMockGoogle) {
-                localStorage.removeItem(MOCK_DRIVE_STORAGE_KEY);
+            
+            const bar = logoutMessageStage.querySelector('.logout-loading-bar');
+            if (bar) {
+                bar.style.animation = 'none';
+                bar.offsetHeight;
+                bar.style.animation = 'fillProgress 3s linear forwards';
             }
-            oauthToken = null;
-            updateGoogleAuthUI();
-            alert('구글 계정 연동이 해제되었습니다.');
+            
+            setTimeout(() => {
+                logoutConfirmModal.classList.remove('active');
+                playHapticSound('tap');
+            }, 3000);
+        });
+    }
+
+    if (logoutConfirmNoBtn) {
+        logoutConfirmNoBtn.addEventListener('click', () => {
+            playHapticSound('cancel');
+            // No = 헤어짐 (실제 로그아웃 진행)
+            logoutConfirmStage.style.display = 'none';
+            logoutMessageStage.style.display = 'block';
+            
+            if (logoutMessageEmoji) logoutMessageEmoji.innerText = '🍃';
+            if (logoutMessageText) {
+                logoutMessageText.innerText = '만남과 헤어짐 사람뜻대로 되는 일은 아니지만 언젠가는 만날사람은 만날거에요. 또봐요.';
+            }
+            
+            const bar = logoutMessageStage.querySelector('.logout-loading-bar');
+            if (bar) {
+                bar.style.animation = 'none';
+                bar.offsetHeight;
+                bar.style.animation = 'fillProgress 3s linear forwards';
+            }
+            
+            setTimeout(() => {
+                if (oauthToken && !isMockGoogle) {
+                    try {
+                        google.accounts.oauth2.revokeToken(oauthToken, () => {});
+                    } catch(e) {}
+                }
+                localStorage.removeItem('google_oauth_token');
+                localStorage.removeItem('google_user_profile');
+                localStorage.removeItem('google_drive_granted');
+                localStorage.removeItem('google_drive_last_backup');
+                if (isMockGoogle) {
+                    localStorage.removeItem(MOCK_DRIVE_STORAGE_KEY);
+                }
+                oauthToken = null;
+                updateGoogleAuthUI();
+                
+                logoutConfirmModal.classList.remove('active');
+                playHapticSound('tap');
+            }, 3000);
         });
     }
 
@@ -5589,7 +5786,7 @@ document.addEventListener("DOMContentLoaded", () => {
     updateGoogleAuthUI();
     if (isMockGoogle || (GOOGLE_CLIENT_ID && !GOOGLE_CLIENT_ID.startsWith('YOUR_GOOGLE_CLIENT_ID'))) {
         initGIS(GOOGLE_CLIENT_ID || 'mock-client-id');
-        if (sessionStorage.getItem('google_oauth_token')) {
+        if (localStorage.getItem('google_oauth_token')) {
             handleGoogleLoginSync();
         }
     }

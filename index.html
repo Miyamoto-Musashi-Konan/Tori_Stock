@@ -1368,6 +1368,43 @@
             </button>
         </div>
     </div>
+
+    <!-- 배경 음악 오디오 -->
+    <audio id="bg-music" src="music/EVA.mp3" loop></audio>
+
+    <!-- 음악 ON/OFF 플로팅 컨트롤러 -->
+    <div id="music-controller-container">
+        <button id="btn-music-toggle" class="music-toggle-btn" title="배경 음악 켜기/끄기">
+            <div class="music-icon-wrapper">
+                <span class="music-note-icon">🎵</span>
+            </div>
+            <div class="music-led-indicator"></div>
+            <div class="music-switch-label">OFF</div>
+        </button>
+    </div>
+
+    <!-- 로그아웃 감성 확인 모달 -->
+    <div id="google-logout-confirm-modal" class="modal">
+        <div class="modal-content logout-modal-content">
+            <div id="logout-confirm-stage">
+                <div class="logout-icon">❔</div>
+                <h3 class="logout-title">로그아웃 확인</h3>
+                <p class="logout-question">그대 정말로 떠나려는 것 맞나요?</p>
+                <div class="logout-btn-group">
+                    <button id="logout-confirm-yes" class="modal-btn primary-btn" style="flex: 1; justify-content: center; height: 42px;">Yes</button>
+                    <button id="logout-confirm-no" class="modal-btn secondary-btn" style="flex: 1; justify-content: center; height: 42px;">No</button>
+                </div>
+            </div>
+            <div id="logout-message-stage" style="display: none;">
+                <div id="logout-message-emoji" class="logout-message-emoji">✨</div>
+                <p id="logout-message-text" class="logout-message-text"></p>
+                <!-- 은은한 로딩 인디케이터 -->
+                <div class="logout-loading-bar-container">
+                    <div class="logout-loading-bar"></div>
+                </div>
+            </div>
+        </div>
+    </div>
 </body>
 
 </html>
