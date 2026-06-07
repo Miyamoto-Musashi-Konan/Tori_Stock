@@ -5183,7 +5183,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const googleBackupStatus = document.getElementById('google-backup-status');
     const googleBackupTime = document.getElementById('google-backup-time');
     const googleSyncNowBtn = document.getElementById('google-sync-now-btn');
-    const googleLogoutBtn = document.getElementById('google-logout-btn');
+    const googleLogoutBtns = document.querySelectorAll('#google-logout-btn');
 
     // UI toggle based on login status
     function updateGoogleAuthUI() {
@@ -5500,14 +5500,16 @@ document.addEventListener("DOMContentLoaded", () => {
     const logoutMessageEmoji = document.getElementById('logout-message-emoji');
     const logoutMessageText = document.getElementById('logout-message-text');
 
-    if (googleLogoutBtn && logoutConfirmModal) {
-        googleLogoutBtn.addEventListener('click', () => {
-            if (googleAuthModal) googleAuthModal.classList.remove('active');
-            
-            logoutConfirmStage.style.display = 'block';
-            logoutMessageStage.style.display = 'none';
-            logoutConfirmModal.classList.add('active');
-            playHapticSound('tap');
+    if (googleLogoutBtns && googleLogoutBtns.length > 0 && logoutConfirmModal) {
+        googleLogoutBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                if (googleAuthModal) googleAuthModal.classList.remove('active');
+                
+                logoutConfirmStage.style.display = 'block';
+                logoutMessageStage.style.display = 'none';
+                logoutConfirmModal.classList.add('active');
+                playHapticSound('tap');
+            });
         });
     }
 
