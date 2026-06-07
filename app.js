@@ -5514,7 +5514,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (logoutConfirmYesBtn) {
         logoutConfirmYesBtn.addEventListener('click', () => {
             playHapticSound('success');
-            // Yes = 다시 돌아옴 (로그인 유지)
+            // Yes(남는다) = 로그인 유지하고 돌아옴
             logoutConfirmStage.style.display = 'none';
             logoutMessageStage.style.display = 'block';
             
@@ -5540,7 +5540,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (logoutConfirmNoBtn) {
         logoutConfirmNoBtn.addEventListener('click', () => {
             playHapticSound('cancel');
-            // No = 헤어짐 (실제 로그아웃 진행)
+            // No(떠난다) = 헤어짐 (실제 로그아웃 진행)
             logoutConfirmStage.style.display = 'none';
             logoutMessageStage.style.display = 'block';
             
