@@ -3295,42 +3295,201 @@ footer a:hover {
     align-items: center;
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 8px;
+    font-size: 13.5px !important;
+    font-weight: 600 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    -moz-appearance: textfield;
+}
+
+.portfolio-qty-input::-webkit-outer-spin-button,
+.portfolio-qty-input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+/* 포트폴리오 비교 뷰 */
+.comparison-card-inner {
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.05);
     background: rgba(0, 0, 0, 0.2);
-    overflow: hidden;
-    height: 34px;
-}
-
-.qty-btn {
-    width: 32px;
+    padding: 16px;
     height: 100%;
-    background: rgba(255, 255, 255, 0.05);
-    border: none;
-    color: #cbd5e1;
-    font-size: 16px;
-    font-weight: 700;
-    cursor: pointer;
-    transition: all 0.15s ease;
+}
+
+.comparison-card-inner.my-theme {
+    background: linear-gradient(135deg, rgba(6, 182, 212, 0.02) 0%, rgba(13, 20, 38, 0.4) 100%);
+    border-color: rgba(6, 182, 212, 0.12);
+}
+
+.comparison-card-inner.rec-theme {
+    background: linear-gradient(135deg, rgba(168, 85, 247, 0.02) 0%, rgba(13, 20, 38, 0.4) 100%);
+    border-color: rgba(168, 85, 247, 0.12);
+}
+
+.comp-metrics-table tr td {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+    padding: 8px 0;
+}
+
+.comp-metrics-table tr:last-child td {
+    border-bottom: none;
+}
+
+/* 모바일 반응형 조절 */
+@media (max-width: 768px) {
+    .recommended-grid {
+        grid-template-columns: 1fr !important;
+        gap: 16px !important;
+    }
+    .portfolio-selection-row {
+        grid-template-columns: 1fr !important;
+        gap: 12px !important;
+    }
+    .analysis-metrics-grid {
+        grid-template-columns: 1fr !important;
+        gap: 12px !important;
+        overflow: hidden !important;
+    }
+    .market-summary-box {
+        padding: 16px !important;
+    }
+    .market-grid-container {
+        max-width: 100% !important;
+        overflow-x: hidden !important;
+    }
+    .exchange-grid {
+        grid-template-columns: repeat(2, 1fr) !important;
+        gap: 10px !important;
+    }
+    .currency-card {
+        min-height: 110px !important;
+        padding: 12px 8px !important;
+    }
+    .curr-emoji {
+        width: 38px !important;
+        height: 38px !important;
+        font-size: 20px !important;
+    }
+    .curr-value {
+        font-size: 15px !important;
+    }
+    .curr-code {
+        font-size: 12px !important;
+    }
+    .curr-name {
+        font-size: 10px !important;
+    }
+    .curr-change {
+        font-size: 10px !important;
+    }
+    /* 달러 대비 차트 탭 버튼 줄바꿈 */
+    .dollar-basis-section .section-title-wrapper {
+        flex-direction: column !important;
+        align-items: flex-start !important;
+        gap: 10px !important;
+    }
+}
+
+/* ==========================================================================
+   15. 포트폴리오 기능 확장 (서브 탭, 추천, 분석, 모바일 증감 버튼) 스타일
+   ========================================================================== */
+
+/* 서브 탭 바 */
+.detail-sub-tabs {
     display: flex;
-    align-items: center;
-    justify-content: center;
+    gap: 8px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    padding-bottom: 1px;
 }
 
-.qty-btn:hover {
-    background: rgba(255, 255, 255, 0.12);
-    color: #fff;
+.sub-tab-btn {
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    padding: 10px 16px;
+    color: var(--text-muted);
+    font-size: 13.5px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    border-top-left-radius: 8px;
+    border-top-right-radius: 8px;
 }
 
-.qty-btn:active {
+.sub-tab-btn:hover {
+    color: var(--text-primary);
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.sub-tab-btn.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+    background: rgba(0, 242, 254, 0.04);
+}
+
+/* 서브 뷰 토글 */
+.detail-subview {
+    display: none;
+    animation: fadeInSubView 0.35s ease forwards;
+}
+
+.detail-subview.active {
+    display: block;
+}
+
+@keyframes fadeInSubView {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* 추천 포트폴리오 카드 */
+.recommended-card {
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.015);
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.recommended-card:hover {
+    transform: translateY(-2px);
+    border-color: rgba(255, 255, 255, 0.15);
+    background: rgba(255, 255, 255, 0.04);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+}
+
+.recommended-card.active {
+    border-color: rgba(0, 242, 254, 0.45) !important;
+    background: rgba(0, 242, 254, 0.04) !important;
+    box-shadow: 0 8px 24px rgba(0, 242, 254, 0.08) !important;
+}
+
+/* 포트폴리오 분석 선택 아이콘 카드 */
+.portfolio-select-icon-card {
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.015);
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.portfolio-select-icon-card:hover {
+    transform: translateY(-2px);
+    border-color: rgba(255, 255, 255, 0.15);
     background: rgba(255, 255, 255, 0.04);
 }
 
-.portfolio-qty-input {
-    width: 60px !important;
-    height: 100% !important;
-    border: none !important;
-    background: transparent !important;
-    color: #fff !important;
-    text-align: center !important;
+.portfolio-select-icon-card.active {
+    border-color: rgba(0, 242, 254, 0.45) !important;
+    background: rgba(0, 242, 254, 0.04) !important;
+    box-shadow: 0 8px 24px rgba(0, 242, 254, 0.08) !important;
+}
+
+/* 수량 증감 버튼 (모바일 최적화) */
+.qty-control-container {
+    display: inline-flex;
+    align-items: center;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
     font-size: 13.5px !important;
     font-weight: 600 !important;
     margin: 0 !important;
@@ -3393,5 +3552,18 @@ footer a:hover {
     .comparison-split-layout {
         grid-template-columns: 1fr !important;
         gap: 16px !important;
+    }
+    
+    /* 추천 포트폴리오 하단 상세 정보 & 비중 그래프 모바일 정렬 보정 */
+    #detail-subview-recommended div[style*="flex-wrap: wrap"] {
+        flex-direction: column !important;
+        align-items: center !important;
+        text-align: center !important;
+        gap: 20px !important;
+    }
+    #detail-subview-recommended div[style*="flex-wrap: wrap"] > div {
+        width: 100% !important;
+        max-width: 320px !important;
+        margin: 0 auto !important;
     }
 }

@@ -3069,6 +3069,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // 12. 전체 대시보드 데이터 초기화 및 루프 실행
     async function initializeDashboard() {
+        renderRecommendedPortfolioCards(); // 추천 포트폴리오 동적 카드 렌더링
         initGaugeTicks();
         await refreshRealData();
 
@@ -4727,8 +4728,62 @@ document.addEventListener("DOMContentLoaded", () => {
                 { symbol: "SHY", name: "iShares 1-3 Year Treasury Bond ETF", weight: 0.2, exchange: "nasdaq" },
                 { symbol: "GLD", name: "SPDR Gold Shares", weight: 0.2, exchange: "nyse" }
             ]
+        },
+        momentum60_40: {
+            title: "Momentum 60/40",
+            desc: "모멘텀 주식(MTUM) 60%와 미국 전체 채권(BND) 40%로 구성되어 시장 트렌드를 추종하는 포트폴리오입니다.",
+            cagr: "9.1%",
+            mdd: "-16.2%",
+            assets: [
+                { symbol: "MTUM", name: "iShares MSCI USA Momentum Factor ETF", weight: 0.6, exchange: "nasdaq" },
+                { symbol: "BND", name: "Vanguard Total Bond Market ETF", weight: 0.4, exchange: "nasdaq" }
+            ]
+        },
+        allweather_ray: {
+            title: "올웨더 (All Weather - Ray Dalio)",
+            desc: "레이 달리오의 올웨더 구성으로 주식 30%(VTI), 장기채 40%(TLT), 중기채 15%(IEI), 원자재 7.5%(DBC), 금 7.5%(GLD)로 자산을 배분합니다.",
+            cagr: "6.2%",
+            mdd: "-11.8%",
+            assets: [
+                { symbol: "VTI", name: "Vanguard Total Stock Market ETF", weight: 0.3, exchange: "nasdaq" },
+                { symbol: "TLT", name: "iShares 20+ Year Treasury Bond ETF", weight: 0.4, exchange: "nasdaq" },
+                { symbol: "IEI", name: "iShares 3-7 Year Treasury Bond ETF", weight: 0.15, exchange: "nasdaq" },
+                { symbol: "DBC", name: "Invesco DB Commodity Index (BC)", weight: 0.075, exchange: "nyse" },
+                { symbol: "GLD", name: "SPDR Gold Shares", weight: 0.075, exchange: "nyse" }
+            ]
+        },
+        goldenbutterfly_new: {
+            title: "황금나비 (Golden Butterfly - VTI)",
+            desc: "소형가치주(IJS) 20%, 전체주식(VTI) 20%, 단기채(SHY) 20%, 장기채(TLT) 20%, 금(GLD) 20%로 단단한 연복리를 만듭니다.",
+            cagr: "6.5%",
+            mdd: "-9.8%",
+            assets: [
+                { symbol: "IJS", name: "iShares S&P Small-Cap 600 Value ETF", weight: 0.2, exchange: "nyse" },
+                { symbol: "VTI", name: "Vanguard Total Stock Market ETF", weight: 0.2, exchange: "nasdaq" },
+                { symbol: "SHY", name: "iShares 1-3 Year Treasury Bond ETF", weight: 0.2, exchange: "nasdaq" },
+                { symbol: "TLT", name: "iShares 20+ Year Treasury Bond ETF", weight: 0.2, exchange: "nasdaq" },
+                { symbol: "GLD", name: "SPDR Gold Shares", weight: 0.2, exchange: "nyse" }
+            ]
         }
     };
+
+    function renderRecommendedPortfolioCards() {
+        const grid = document.querySelector('#detail-subview-recommended .recommended-grid');
+        if (!grid) return;
+
+        grid.innerHTML = Object.entries(RECOMMENDED_PORTFOLIOS).map(([id, port]) => {
+            return `
+                <div class="recommended-card" data-portfolio-id="${id}" style="padding: 20px; cursor: pointer; border: 1px solid rgba(255,255,255,0.07); border-radius: 12px; background: rgba(255, 255, 255, 0.015);" onclick="selectRecommendedPortfolio('${id}')">
+                    <h4 style="margin: 0 0 10px 0; color: #fff; font-size: 15px;">${port.title}</h4>
+                    <p style="color: var(--text-muted); font-size: 12px; line-height: 1.5; margin: 0 0 16px 0; min-height: 54px;">${port.desc}</p>
+                    <div style="display: flex; justify-content: space-between; font-size: 13px;">
+                        <span style="color: var(--text-secondary);">10년 CAGR: <strong style="color: var(--bullish);">${port.cagr}</strong></span>
+                        <span style="color: var(--text-secondary);">MDD: <strong style="color: var(--bearish);">${port.mdd}</strong></span>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
 
     function savePortfolio() {
         localStorage.setItem('my_portfolio_items', JSON.stringify(portfolio));
@@ -4979,32 +5034,8 @@ document.addEventListener("DOMContentLoaded", () => {
             recommendedPortfolioChart.destroy();
         }
 
-        const labels = data.assets.map(a => a.symbol);
-        const weights = data.assets.map(a => a.weight * 100);
-        const colors = ['#00f2fe', '#c084fc', '#fbbf24', '#f87171', '#34d399'].slice(0, data.assets.length);
-
-        recommendedPortfolioChart = new Chart(ctx.getContext('2d'), {
-            type: 'doughnut',
-            data: {
-                labels: labels,
-                datasets: [{
-                    data: weights,
-                    backgroundColor: colors,
-                    borderColor: 'rgba(0, 0, 0, 0.4)',
-                    borderWidth: 1
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: {
-                        position: 'bottom',
-                        labels: { color: '#cbd5e1', font: { size: 11 } }
-                    }
-                }
-            }
-        });
+        const cagrFloat = parseFloat(data.cagr);
+        recommendedPortfolioChart = renderDoughnutChart(ctx, data.assets, 10000000, cagrFloat, true);
     };
 
     // 이 포트폴리오로 시작하기 버튼 클릭 시 모달 열기
@@ -5355,43 +5386,143 @@ document.addEventListener("DOMContentLoaded", () => {
         // 2. 시작 시점 비중 차트
         const startCtx = document.getElementById('chart-weight-start');
         if (weightStartChart) weightStartChart.destroy();
-        weightStartChart = renderDoughnutChart(startCtx, result.startWeights);
+        weightStartChart = renderDoughnutChart(startCtx, result.startWeights, 10000000, 0);
 
         // 3. 현재 시점 비중 차트
         const currentCtx = document.getElementById('chart-weight-current');
         if (weightCurrentChart) weightCurrentChart.destroy();
-        weightCurrentChart = renderDoughnutChart(currentCtx, result.currentWeights);
+        const endVal = result.series[result.series.length - 1].y;
+        weightCurrentChart = renderDoughnutChart(currentCtx, result.currentWeights, endVal, result.totalReturn);
     };
 
     // 도넛 차트 렌더링용 헬퍼 함수
-    function renderDoughnutChart(ctx, weightsData) {
+    function renderDoughnutChart(ctx, weightsData, totalValue = null, totalReturn = null, isCagr = false) {
         if (!ctx) return null;
         const labels = weightsData.map(w => w.symbol);
         const data = weightsData.map(w => (w.weight * 100).toFixed(1));
         const colors = ['#00f2fe', '#c084fc', '#fbbf24', '#f87171', '#34d399'].slice(0, weightsData.length);
 
-        return new Chart(ctx.getContext('2d'), {
+        // 중앙 텍스트 플러그인 정의
+        const centerTextPlugin = {
+            id: 'centerText',
+            beforeDraw: function(chart) {
+                if (chart.config.options.plugins.centerText) {
+                    const ctxCanvas = chart.ctx;
+                    const centerConfig = chart.config.options.plugins.centerText;
+                    
+                    const fontStyle = 'Inter, -apple-system, Malgun Gothic, sans-serif';
+                    const txtVal = centerConfig.value || '';
+                    const txtLabel = centerConfig.label || '';
+                    const txtSub = centerConfig.sub || '';
+                    const subColor = centerConfig.subColor || '#94a3b8';
+                    
+                    const centerX = (chart.chartArea.left + chart.chartArea.right) / 2;
+                    const centerY = (chart.chartArea.top + chart.chartArea.bottom) / 2;
+                    
+                    ctxCanvas.save();
+                    
+                    // 1. 라벨
+                    if (txtLabel) {
+                        ctxCanvas.font = `600 10px ${fontStyle}`;
+                        ctxCanvas.fillStyle = 'rgba(148, 163, 184, 0.8)';
+                        ctxCanvas.textAlign = 'center';
+                        ctxCanvas.textBaseline = 'middle';
+                        ctxCanvas.fillText(txtLabel, centerX, centerY - 21);
+                    }
+                    
+                    // 2. 값
+                    if (txtVal) {
+                        ctxCanvas.font = `bold 16px ${fontStyle}`;
+                        ctxCanvas.fillStyle = '#ffffff';
+                        ctxCanvas.textAlign = 'center';
+                        ctxCanvas.textBaseline = 'middle';
+                        ctxCanvas.fillText(txtVal, centerX, centerY + 1);
+                    }
+                    
+                    // 3. 서브 텍스트 (수익률)
+                    if (txtSub) {
+                        ctxCanvas.font = `700 11px ${fontStyle}`;
+                        ctxCanvas.fillStyle = subColor;
+                        ctxCanvas.textAlign = 'center';
+                        ctxCanvas.textBaseline = 'middle';
+                        ctxCanvas.fillText(txtSub, centerX, centerY + 22);
+                    }
+                    
+                    ctxCanvas.restore();
+                }
+            }
+        };
+
+        let centerTextConfig = null;
+        if (totalValue !== null) {
+            const valStr = (Math.round(totalValue / 10000)).toLocaleString() + '만 원';
+            let labelStr = '최종 자산';
+            if (totalReturn === 0 && !isCagr) {
+                labelStr = '시작 자산';
+            }
+            
+            let subStr = '';
+            let subColor = '#94a3b8';
+            if (totalReturn !== null) {
+                if (isCagr) {
+                    subStr = `▲ 연 ${totalReturn}%`;
+                    subColor = '#ef4444';
+                } else if (totalReturn > 0) {
+                    subStr = `▲ +${totalReturn.toFixed(1)}%`;
+                    subColor = '#ef4444';
+                } else if (totalReturn < 0) {
+                    subStr = `▼ ${totalReturn.toFixed(1)}%`;
+                    subColor = '#3b82f6';
+                } else {
+                    subStr = '0.0%';
+                    subColor = '#94a3b8';
+                }
+            }
+            
+            centerTextConfig = {
+                label: labelStr,
+                value: valStr,
+                sub: subStr,
+                subColor: subColor
+            };
+        }
+
+        const chartConfig = {
             type: 'doughnut',
             data: {
                 labels: labels,
                 datasets: [{
                     data: data,
                     backgroundColor: colors,
-                    borderColor: 'rgba(0, 0, 0, 0.4)',
-                    borderWidth: 1
+                    borderColor: 'rgba(13, 20, 38, 0.6)',
+                    borderWidth: 1.5
                 }]
             },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
+                cutout: '72%',
                 plugins: {
                     legend: {
                         position: 'bottom',
-                        labels: { color: '#94a3b8', font: { size: 10 } }
+                        labels: { 
+                            color: '#94a3b8', 
+                            boxWidth: 8,
+                            padding: 8,
+                            font: { size: 9.5, weight: '600' } 
+                        }
                     }
                 }
-            }
-        });
+            },
+            plugins: []
+        };
+
+        if (centerTextConfig) {
+            chartConfig.options.plugins.centerText = centerTextConfig;
+            chartConfig.plugins.push(centerTextPlugin);
+        }
+
+        return new Chart(ctx.getContext('2d'), chartConfig);
     }
 
     // 포트폴리오 비교하기
@@ -5431,12 +5562,14 @@ document.addEventListener("DOMContentLoaded", () => {
         // 1. 내 포트폴리오 비중 차트
         const myCtx = document.getElementById('chart-comp-my-pie');
         if (compMyPieChart) compMyPieChart.destroy();
-        compMyPieChart = renderDoughnutChart(myCtx, myResult.currentWeights);
+        const myEndVal = myResult.series[myResult.series.length - 1].y;
+        compMyPieChart = renderDoughnutChart(myCtx, myResult.currentWeights, myEndVal, myResult.totalReturn);
 
         // 2. 추천 포트폴리오 비중 차트
         const recCtx = document.getElementById('chart-comp-rec-pie');
         if (compRecPieChart) compRecPieChart.destroy();
-        compRecPieChart = renderDoughnutChart(recCtx, recResult.currentWeights);
+        const recEndVal = recResult.series[recResult.series.length - 1].y;
+        compRecPieChart = renderDoughnutChart(recCtx, recResult.currentWeights, recEndVal, recResult.totalReturn);
         
         // 스크롤 이동
         compPanel.scrollIntoView({ behavior: 'smooth' });
