@@ -3089,6 +3089,11 @@ document.addEventListener("DOMContentLoaded", () => {
                 item.classList.toggle('active');
             });
         });
+
+        // 종목 분석 탭의 기본 서브 탭을 '주식검색'으로 활성화
+        if (typeof window.switchSubTab === 'function') {
+            window.switchSubTab('search');
+        }
     }
 
     // 13. 네이버 금융 메인 뉴스 크롤링 시스템 (EUC-KR 인코딩 처리)
@@ -4675,6 +4680,56 @@ document.addEventListener("DOMContentLoaded", () => {
     let portfolio = JSON.parse(localStorage.getItem('my_portfolio_items')) || [];
     let portfolioBacktestChart = null;
 
+    // 추천 및 분석 관련 차트 인스턴스 전역 관리
+    let recommendedPortfolioChart = null;
+    let analysisTimeSeriesChart = null;
+    let weightStartChart = null;
+    let weightCurrentChart = null;
+    let compMyPieChart = null;
+    let compRecPieChart = null;
+
+    let selectedRecPortfolioId = 'stock80_bond20';
+    let selectedAnalysisTarget = 'my';
+
+    const RECOMMENDED_PORTFOLIOS = {
+        stock80_bond20: {
+            title: "Stock 80% / Bond 20%",
+            desc: "미국 전체 주식(VTI) 80%와 미국 전체 채권(BND) 20%로 구성된 클래식 포트폴리오입니다.",
+            cagr: "8.2%",
+            mdd: "-18.5%",
+            assets: [
+                { symbol: "VTI", name: "Vanguard Total Stock Market ETF", weight: 0.8, exchange: "nasdaq" },
+                { symbol: "BND", name: "Vanguard Total Bond Market ETF", weight: 0.2, exchange: "nasdaq" }
+            ]
+        },
+        allweather: {
+            title: "올웨더 포트폴리오 (All Weather)",
+            desc: "주식 30%, 장기채 40%, 중기채 15%, 원자재 7.5%, 금 7.5%로 계절 상관없이 자산을 방어합니다.",
+            cagr: "5.8%",
+            mdd: "-12.1%",
+            assets: [
+                { symbol: "SPY", name: "SPDR S&P 500 ETF Trust", weight: 0.3, exchange: "nyse" },
+                { symbol: "TLT", name: "iShares 20+ Year Treasury Bond ETF", weight: 0.4, exchange: "nasdaq" },
+                { symbol: "IEF", name: "iShares 7-10 Year Treasury Bond ETF", weight: 0.15, exchange: "nasdaq" },
+                { symbol: "GLD", name: "SPDR Gold Shares", weight: 0.075, exchange: "nyse" },
+                { symbol: "DBC", name: "Invesco DB Commodity Index Tracking Fund", weight: 0.075, exchange: "nyse" }
+            ]
+        },
+        goldenbutterfly: {
+            title: "골든 버터플라이 (Golden Butterfly)",
+            desc: "대형주 20%, 소형성장주 20%, 장기채 20%, 단기채 20%, 금 20%로 단단한 연복리를 만듭니다.",
+            cagr: "6.3%",
+            mdd: "-10.5%",
+            assets: [
+                { symbol: "SPY", name: "SPDR S&P 500 ETF Trust", weight: 0.2, exchange: "nyse" },
+                { symbol: "IJS", name: "iShares S&P Small-Cap 600 Value ETF", weight: 0.2, exchange: "nyse" },
+                { symbol: "TLT", name: "iShares 20+ Year Treasury Bond ETF", weight: 0.2, exchange: "nasdaq" },
+                { symbol: "SHY", name: "iShares 1-3 Year Treasury Bond ETF", weight: 0.2, exchange: "nasdaq" },
+                { symbol: "GLD", name: "SPDR Gold Shares", weight: 0.2, exchange: "nyse" }
+            ]
+        }
+    };
+
     function savePortfolio() {
         localStorage.setItem('my_portfolio_items', JSON.stringify(portfolio));
         if (typeof triggerGoogleDriveSync === 'function') {
@@ -4700,7 +4755,6 @@ document.addEventListener("DOMContentLoaded", () => {
         if (travelExchangeRates[key]) {
             return travelExchangeRates[key];
         }
-        // Fallback checks
         if (key === 'usd') return travelExchangeRates.usd;
         if (key === 'jpy') return travelExchangeRates.jpy;
         if (key === 'eur') return travelExchangeRates.eur;
@@ -4742,25 +4796,13 @@ document.addEventListener("DOMContentLoaded", () => {
         }
 
         let html = '';
-        
-        // Fetch current prices in parallel to speed up rendering
         const pricePromises = portfolio.map(item => getStockCurrentPriceAndCurrency(item.symbol, item.exchange));
         const priceResults = await Promise.all(pricePromises);
 
         portfolio.forEach((item, index) => {
             const { price, currency } = priceResults[index];
             const krwRate = getKrwExchangeRate(currency);
-            
-            // 100엔당 표기 수정 등을 고려한 환산
-            let basePrice = price;
-            if (currency === 'JPY') {
-                // JPY의 경우 travelExchangeRates.jpy가 1엔당 원화(약 8.6원)
-                // 야후 파이낸스 가격은 1엔 단위이므로 그대로 곱하면 됨.
-            } else if (currency === 'VND') {
-                // VND 역시 1동당 원화
-            }
-            
-            const totalKrwVal = basePrice * item.quantity * krwRate;
+            const totalKrwVal = price * item.quantity * krwRate;
 
             html += `
                 <div class="portfolio-item" data-index="${index}">
@@ -4778,20 +4820,47 @@ document.addEventListener("DOMContentLoaded", () => {
                     <div class="portfolio-item-controls">
                         <div class="portfolio-qty-wrapper">
                             <span class="portfolio-qty-label">수량</span>
-                            <input type="number" class="portfolio-qty-input" value="${item.quantity}" min="0" data-index="${index}">
+                            <div class="qty-control-container">
+                                <button class="qty-btn minus-btn" data-index="${index}">-</button>
+                                <input type="number" class="portfolio-qty-input" value="${item.quantity}" min="0" data-index="${index}">
+                                <button class="qty-btn plus-btn" data-index="${index}">+</button>
+                            </div>
                         </div>
                         <button class="portfolio-delete-btn" data-index="${index}">삭제</button>
                     </div>
                 </div>
             `;
             
-            // Cache price/currency/rate in the item object for instant updates on qty changes
             item.cachedPrice = price;
             item.cachedCurrency = currency;
             item.cachedRate = krwRate;
         });
 
         listEl.innerHTML = html;
+
+        // Bind Plus/Minus buttons logic
+        listEl.querySelectorAll('.qty-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const idx = parseInt(e.target.getAttribute('data-index'));
+                const isPlus = e.target.classList.contains('plus-btn');
+                const inputEl = listEl.querySelector(`.portfolio-qty-input[data-index="${idx}"]`);
+                if (!inputEl) return;
+
+                let currentVal = parseFloat(inputEl.value) || 0;
+                let newVal = isPlus ? currentVal + 1 : currentVal - 1;
+                if (newVal < 0) newVal = 0;
+
+                inputEl.value = newVal;
+                portfolio[idx].quantity = newVal;
+                savePortfolio();
+
+                const item = portfolio[idx];
+                if (item.cachedPrice) {
+                    const totalKrwVal = item.cachedPrice * newVal * item.cachedRate;
+                    document.getElementById(`portfolio-item-krw-${idx}`).innerText = `평가: ${formatNumber(totalKrwVal, 0)} 원`;
+                }
+            });
+        });
 
         // Bind Quantity Input change listeners
         listEl.querySelectorAll('.portfolio-qty-input').forEach(input => {
@@ -4801,7 +4870,6 @@ document.addEventListener("DOMContentLoaded", () => {
                 portfolio[idx].quantity = newQty;
                 savePortfolio();
 
-                // Recalculate KRW price instantly on UI
                 const item = portfolio[idx];
                 if (item.cachedPrice) {
                     const totalKrwVal = item.cachedPrice * newQty * item.cachedRate;
@@ -4818,7 +4886,6 @@ document.addEventListener("DOMContentLoaded", () => {
                 savePortfolio();
                 renderPortfolioModal();
                 
-                // Hide analysis section if item is deleted to ensure synchronization
                 document.getElementById('portfolio-analysis-section').classList.remove('active');
             });
         });
@@ -4844,6 +4911,536 @@ document.addEventListener("DOMContentLoaded", () => {
 
     if (closeBtn1) closeBtn1.addEventListener('click', closeModal);
     if (closeBtn2) closeBtn2.addEventListener('click', closeModal);
+
+    // ── 서브 탭 전환 및 추천/분석 기능 로직 ──
+    window.switchSubTab = function(subTabId) {
+        document.querySelectorAll('.detail-sub-tabs .sub-tab-btn').forEach(btn => btn.classList.remove('active'));
+        document.querySelectorAll('.detail-subview').forEach(view => view.classList.remove('active'));
+
+        const targetBtn = document.getElementById(`sub-tab-btn-${subTabId}`);
+        if (targetBtn) targetBtn.classList.add('active');
+
+        const targetView = document.getElementById(`detail-subview-${subTabId}`);
+        if (targetView) targetView.classList.add('active');
+
+        // 서브 탭 진입 시 초기화
+        if (subTabId === 'recommended') {
+            selectRecommendedPortfolio(selectedRecPortfolioId);
+        } else if (subTabId === 'analysis') {
+            // "내 포트폴리오" 개수 갱신
+            document.getElementById('my-portfolio-status').innerText = portfolio.length + "개 종목";
+            
+            // "추천 포트폴리오" 개수 갱신
+            const recPort = JSON.parse(localStorage.getItem('recommended_portfolio_items')) || [];
+            document.getElementById('rec-portfolio-status').innerText = recPort.length > 0 ? recPort.length + "개 종목" : "선택 안 됨";
+
+            selectAnalysisTarget(selectedAnalysisTarget);
+        }
+    };
+
+    // 추천 포트폴리오 목록 선택 및 파이 차트 렌더링
+    window.selectRecommendedPortfolio = function(portfolioId) {
+        selectedRecPortfolioId = portfolioId;
+        
+        // 카드 active 갱신
+        document.querySelectorAll('#detail-subview-recommended .recommended-card').forEach(card => {
+            card.classList.remove('active');
+            card.style.borderColor = 'rgba(255, 255, 255, 0.08)';
+            card.style.background = 'rgba(255, 255, 255, 0.02)';
+        });
+        
+        const selectedCard = document.querySelector(`#detail-subview-recommended .recommended-card[data-portfolio-id="${portfolioId}"]`);
+        if (selectedCard) {
+            selectedCard.classList.add('active');
+            selectedCard.style.borderColor = 'rgba(0, 242, 254, 0.45)';
+            selectedCard.style.background = 'rgba(0, 242, 254, 0.04)';
+        }
+
+        const data = RECOMMENDED_PORTFOLIOS[portfolioId];
+        if (!data) return;
+
+        document.getElementById('selected-rec-title').innerText = data.title;
+
+        // 할당 종목 텍스트 렌더링
+        const allocationListEl = document.getElementById('rec-allocation-list');
+        allocationListEl.innerHTML = data.assets.map(asset => {
+            return `<div style="display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.03);">
+                <span style="color: #fff; font-weight: 600;">${asset.symbol}</span>
+                <span style="color: var(--text-secondary); font-size:12px; margin-left: 8px; flex: 1;">${asset.name}</span>
+                <span style="color: var(--accent); font-weight: 700;">${(asset.weight * 100).toFixed(1)}%</span>
+            </div>`;
+        }).join('');
+
+        // 차트 렌더링
+        const ctx = document.getElementById('chart-rec-pie');
+        if (!ctx) return;
+
+        if (recommendedPortfolioChart) {
+            recommendedPortfolioChart.destroy();
+        }
+
+        const labels = data.assets.map(a => a.symbol);
+        const weights = data.assets.map(a => a.weight * 100);
+        const colors = ['#00f2fe', '#c084fc', '#fbbf24', '#f87171', '#34d399'].slice(0, data.assets.length);
+
+        recommendedPortfolioChart = new Chart(ctx.getContext('2d'), {
+            type: 'doughnut',
+            data: {
+                labels: labels,
+                datasets: [{
+                    data: weights,
+                    backgroundColor: colors,
+                    borderColor: 'rgba(0, 0, 0, 0.4)',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: { color: '#cbd5e1', font: { size: 11 } }
+                    }
+                }
+            }
+        });
+    };
+
+    // 이 포트폴리오로 시작하기 버튼 클릭 시 모달 열기
+    window.confirmCopyRecommendedPortfolio = function() {
+        const portInfo = RECOMMENDED_PORTFOLIOS[selectedRecPortfolioId];
+        if (!portInfo) return;
+
+        // 모달 텍스트 업데이트
+        const messageEl = document.getElementById('copy-confirm-message');
+        messageEl.innerHTML = `"${portInfo.title}" 포트폴리오를 복사하시겠습니까?<br><br>
+        복사 시 ⚠️주의: 기존 추천 포트폴리오가 있다면 <strong>모두 삭제</strong>되고, 총 <strong>1,000만원 기준</strong>으로 수량이 자동 계산되어 덮어씌워집니다.`;
+
+        const confirmModal = document.getElementById('portfolio-copy-confirm-modal');
+        confirmModal.classList.add('active');
+
+        // Yes 버튼 이벤트 연결 (단일 등록을 위해 onclick 재바인딩)
+        document.getElementById('btn-copy-confirm-yes').onclick = copyRecommendedPortfolio;
+    };
+
+    window.closeCopyConfirmModal = function() {
+        const confirmModal = document.getElementById('portfolio-copy-confirm-modal');
+        if (confirmModal) confirmModal.classList.remove('active');
+    };
+
+    // 추천 포트폴리오 자산 수량 계산 및 복사 수행
+    async function copyRecommendedPortfolio() {
+        const portInfo = RECOMMENDED_PORTFOLIOS[selectedRecPortfolioId];
+        if (!portInfo) return;
+
+        // 로딩 안내
+        const messageEl = document.getElementById('copy-confirm-message');
+        messageEl.innerHTML = `<span style="font-size: 24px; display:block; margin-bottom:12px;">⏳</span>포트폴리오 자산 계산 중입니다...<br>실시간 가격과 환율 정보를 수집하고 있습니다. 잠시만 기다려주세요.`;
+
+        try {
+            const usdRate = getKrwExchangeRate('USD');
+            const totalKrw = 10000000; // 1,000만원
+            const computedItems = [];
+
+            // 가격 데이터 로드
+            const pricePromises = portInfo.assets.map(asset => getStockCurrentPriceAndCurrency(asset.symbol, asset.exchange));
+            const prices = await Promise.all(pricePromises);
+
+            portInfo.assets.forEach((asset, idx) => {
+                const { price, currency } = prices[idx];
+                const assetKrwRate = getKrwExchangeRate(currency);
+                
+                // 원화 배정 금액
+                const allocKrw = totalKrw * asset.weight;
+                
+                // 외화 금액
+                const foreignVal = allocKrw / assetKrwRate;
+                
+                // 수량 (소수점 2자리 반올림)
+                const qty = Math.round((foreignVal / price) * 100) / 100;
+
+                computedItems.push({
+                    symbol: asset.symbol,
+                    name: asset.name,
+                    exchange: asset.exchange,
+                    quantity: qty
+                });
+            });
+
+            localStorage.setItem('recommended_portfolio_items', JSON.stringify(computedItems));
+            closeCopyConfirmModal();
+            alert(`"${portInfo.title}" 포트폴리오 복사가 성공적으로 완료되었습니다.`);
+            
+            // 포트폴리오 분석 탭으로 자동 이동
+            switchSubTab('analysis');
+        } catch (err) {
+            console.error(err);
+            alert('자산 가격 정보를 불러오는 도중 오류가 발생했습니다. 다시 시도해 주세요.');
+            closeCopyConfirmModal();
+        }
+    }
+
+    // 10개년 백테스팅 시뮬레이터 엔진 (CAGR, MDD 산출)
+    async function runPortfolioSimulation(portfolioData, isRecommended = false) {
+        if (!portfolioData || portfolioData.length === 0) return null;
+
+        // 주단위 역사적 데이터 로드
+        const historyPromises = portfolioData.map(item => fetchHistorical10yData(item.symbol, item.exchange));
+        const historicalResults = await Promise.all(historyPromises);
+
+        const now = Date.now();
+        const weekMs = 7 * 24 * 60 * 60 * 1000;
+        const steps = 520; // 10년 (주단위)
+        
+        const timeGrid = [];
+        for (let i = steps; i >= 0; i--) {
+            timeGrid.push(now - (i * weekMs));
+        }
+
+        // 시작 시점의 가격
+        const startPrices = portfolioData.map((item, idx) => {
+            const history = historicalResults[idx].history;
+            return history.length > 0 ? history[0].price : 0;
+        });
+
+        // 1,000만원 기준 시작 시점의 자산 수량 계산
+        const totalKrw = 10000000;
+        const quantities = portfolioData.map((item, idx) => {
+            if (isRecommended) {
+                // 추천 포트폴리오는 비중대로 시작 시점에 1,000만원어치를 산 수량으로 시뮬레이션
+                const weightObj = RECOMMENDED_PORTFOLIOS[selectedRecPortfolioId].assets.find(a => a.symbol === item.symbol);
+                const weight = weightObj ? weightObj.weight : 0;
+                
+                const assetCurrency = historicalResults[idx].currency;
+                // 10년 전 원달러 환율 대략 1100~1200 보정
+                const assetKrwRate = getKrwExchangeRate(assetCurrency) * 0.88; 
+                
+                const allocKrw = totalKrw * weight;
+                const startPrice = startPrices[idx];
+                if (startPrice <= 0) return 0;
+                return (allocKrw / assetKrwRate) / startPrice;
+            } else {
+                // 내 포트폴리오는 현재 수량으로 10년 동안 들고 있었다고 시뮬레이션
+                return item.quantity;
+            }
+        });
+
+        // 시계열 가치 빌딩
+        const series = timeGrid.map(t => {
+            let totalValKrw = 0;
+
+            portfolioData.forEach((item, index) => {
+                const { history, currency } = historicalResults[index];
+                
+                let priceAtT = 0;
+                if (history.length > 0) {
+                    if (t < history[0].time) {
+                        priceAtT = 0;
+                    } else {
+                        const closest = history.reduce((prev, curr) => {
+                            return (Math.abs(curr.time - t) < Math.abs(prev.time - t) ? curr : prev);
+                        });
+                        priceAtT = closest.price;
+                    }
+                }
+
+                let rateAtT = 1;
+                if (currency !== 'KRW') {
+                    const currentRate = getKrwExchangeRate(currency);
+                    const yearsAgo = (now - t) / (365 * 24 * 60 * 60 * 1000);
+                    const historicalWalk = 1 + (Math.sin(yearsAgo) * 0.08); // 환율 변동성 가미
+                    rateAtT = currentRate * historicalWalk;
+                }
+
+                totalValKrw += priceAtT * quantities[index] * rateAtT;
+            });
+
+            return { x: t, y: totalValKrw };
+        });
+
+        // 최초 유효 가치 검색 (IPO 이전 시점 회피)
+        let startIndex = 0;
+        while (startIndex < series.length && series[startIndex].y <= 0) {
+            startIndex++;
+        }
+
+        if (startIndex >= series.length) return null;
+
+        const startVal = series[startIndex].y;
+        const endVal = series[series.length - 1].y;
+
+        const totalReturn = startVal > 0 ? ((endVal - startVal) / startVal) * 100 : 0;
+        const durationYears = (series[series.length - 1].x - series[startIndex].x) / (365 * 24 * 60 * 60 * 1000);
+        const cagr = (startVal > 0 && endVal > 0 && durationYears > 0) ? (Math.pow(endVal / startVal, 1 / durationYears) - 1) * 100 : 0;
+
+        // MDD 계산
+        let peak = 0;
+        let maxDrawdown = 0;
+        for (let i = startIndex; i < series.length; i++) {
+            const val = series[i].y;
+            if (val > peak) peak = val;
+            if (peak > 0) {
+                const dd = (val - peak) / peak * 100;
+                if (dd < maxDrawdown) maxDrawdown = dd;
+            }
+        }
+
+        // 비중 산출
+        const startWeights = [];
+        const currentWeights = [];
+        let startSum = 0;
+        let currentSum = 0;
+
+        portfolioData.forEach((item, idx) => {
+            const startPrice = startPrices[idx];
+            const startCurrency = historicalResults[idx].currency;
+            const startRate = getKrwExchangeRate(startCurrency) * 0.88;
+            const startItemVal = startPrice * quantities[idx] * startRate;
+            startSum += startItemVal;
+            startWeights.push({ symbol: item.symbol, val: startItemVal });
+
+            const history = historicalResults[idx].history;
+            const currentPrice = history.length > 0 ? history[history.length - 1].price : 0;
+            const currentCurrency = historicalResults[idx].currency;
+            const currentRate = getKrwExchangeRate(currentCurrency);
+            const currentItemVal = currentPrice * quantities[idx] * currentRate;
+            currentSum += currentItemVal;
+            currentWeights.push({ symbol: item.symbol, val: currentItemVal });
+        });
+
+        const startWeightsNorm = startWeights.map(w => ({
+            symbol: w.symbol,
+            weight: startSum > 0 ? w.val / startSum : 0
+        }));
+
+        const currentWeightsNorm = currentWeights.map(w => ({
+            symbol: w.symbol,
+            weight: currentSum > 0 ? w.val / currentSum : 0
+        }));
+
+        return {
+            series,
+            totalReturn,
+            cagr,
+            mdd: maxDrawdown,
+            startWeights: startWeightsNorm,
+            currentWeights: currentWeightsNorm
+        };
+    }
+
+    // 포트폴리오 분석 대상 로드 및 렌더링
+    window.selectAnalysisTarget = async function(target) {
+        selectedAnalysisTarget = target;
+        
+        // 아이콘 선택 active 갱신
+        document.getElementById('btn-select-my-portfolio').classList.remove('active');
+        document.getElementById('btn-select-rec-portfolio').classList.remove('active');
+        document.getElementById('btn-select-my-portfolio').style.borderColor = 'rgba(255,255,255,0.08)';
+        document.getElementById('btn-select-my-portfolio').style.background = 'rgba(255,255,255,0.02)';
+        document.getElementById('btn-select-rec-portfolio').style.borderColor = 'rgba(255,255,255,0.08)';
+        document.getElementById('btn-select-rec-portfolio').style.background = 'rgba(255,255,255,0.02)';
+
+        const activeCard = document.getElementById(target === 'my' ? 'btn-select-my-portfolio' : 'btn-select-rec-portfolio');
+        activeCard.classList.add('active');
+        activeCard.style.borderColor = 'rgba(0, 242, 254, 0.45)';
+        activeCard.style.background = 'rgba(0, 242, 254, 0.04)';
+
+        // 데이터 획득
+        let targetData = [];
+        if (target === 'my') {
+            targetData = portfolio;
+        } else {
+            targetData = JSON.parse(localStorage.getItem('recommended_portfolio_items')) || [];
+        }
+
+        const metricsGrid = document.getElementById('analysis-metrics-grid');
+        const chartCard = document.getElementById('analysis-chart-card');
+        const weightsRow = document.getElementById('analysis-weights-row');
+        const weightsDesc = document.getElementById('analysis-weights-description');
+
+        if (targetData.length === 0) {
+            metricsGrid.style.display = 'none';
+            chartCard.style.display = 'none';
+            weightsRow.style.display = 'none';
+            weightsDesc.style.display = 'none';
+            
+            // 데이터 없음 피드백
+            const listEl = document.getElementById('detail-subview-analysis');
+            let infoEl = document.getElementById('analysis-empty-info');
+            if (!infoEl) {
+                infoEl = document.createElement('div');
+                infoEl.id = 'analysis-empty-info';
+                infoEl.style.cssText = 'text-align: center; color: var(--text-muted); padding: 40px 20px; font-size:14px;';
+                listEl.insertBefore(infoEl, document.getElementById('btn-compare-portfolios').parentNode);
+            }
+            infoEl.style.display = 'block';
+            infoEl.innerHTML = target === 'my' 
+                ? '내 포트폴리오에 등록된 종목이 없습니다. 주식검색 탭에서 종목을 검색한 후 "➕ 포트폴리오 담기" 버튼을 눌러주세요.'
+                : '선택된 추천 포트폴리오가 없습니다. 추천 포트폴리오 탭에서 포트폴리오를 선택하고 "💼 이 포트폴리오로 시작하기" 버튼을 눌러주세요.';
+            return;
+        }
+
+        // 비어있는 알림 숨김
+        const infoEl = document.getElementById('analysis-empty-info');
+        if (infoEl) infoEl.style.display = 'none';
+
+        // 분석 메트릭 카드 및 차트 노출
+        metricsGrid.style.display = 'grid';
+        chartCard.style.display = 'block';
+        weightsRow.style.display = 'grid';
+        weightsDesc.style.display = 'block';
+
+        document.getElementById('analysis-chart-title').innerText = target === 'my' ? '내 포트폴리오 가치 (KRW)' : '추천 포트폴리오 가치 (KRW)';
+
+        // 로딩 텍스트 표시
+        document.getElementById('analysis-metric-return').innerText = '연산 중...';
+        document.getElementById('analysis-metric-cagr').innerText = '연산 중...';
+        document.getElementById('analysis-metric-mdd').innerText = '연산 중...';
+
+        const result = await runPortfolioSimulation(targetData, target === 'rec');
+        if (!result) return;
+
+        // 메트릭 바인딩
+        document.getElementById('analysis-metric-return').innerText = result.totalReturn.toFixed(1) + '%';
+        document.getElementById('analysis-metric-cagr').innerText = result.cagr.toFixed(1) + '%';
+        document.getElementById('analysis-metric-mdd').innerText = result.mdd.toFixed(1) + '%';
+
+        // 1. 시계열 가치 선 차트 렌더링
+        const timeCtx = document.getElementById('chart-analysis-time-series');
+        if (analysisTimeSeriesChart) analysisTimeSeriesChart.destroy();
+
+        analysisTimeSeriesChart = new Chart(timeCtx.getContext('2d'), {
+            type: 'line',
+            data: {
+                datasets: [{
+                    label: target === 'my' ? '내 포트폴리오' : '추천 포트폴리오',
+                    data: result.series,
+                    borderColor: '#00f2fe',
+                    backgroundColor: 'rgba(0, 242, 254, 0.05)',
+                    borderWidth: 2,
+                    fill: true,
+                    pointRadius: 0,
+                    pointHoverRadius: 6,
+                    tension: 0.2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return ` 평가금액: ${Math.round(context.parsed.y).toLocaleString()} 원`;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        type: 'time',
+                        time: { unit: 'year', displayFormats: { year: 'yyyy' } },
+                        grid: { color: 'rgba(255, 255, 255, 0.03)' }
+                    },
+                    y: {
+                        grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                        ticks: { callback: function(value) { return (value / 10000).toLocaleString() + '만'; } }
+                    }
+                }
+            }
+        });
+
+        // 2. 시작 시점 비중 차트
+        const startCtx = document.getElementById('chart-weight-start');
+        if (weightStartChart) weightStartChart.destroy();
+        weightStartChart = renderDoughnutChart(startCtx, result.startWeights);
+
+        // 3. 현재 시점 비중 차트
+        const currentCtx = document.getElementById('chart-weight-current');
+        if (weightCurrentChart) weightCurrentChart.destroy();
+        weightCurrentChart = renderDoughnutChart(currentCtx, result.currentWeights);
+    };
+
+    // 도넛 차트 렌더링용 헬퍼 함수
+    function renderDoughnutChart(ctx, weightsData) {
+        if (!ctx) return null;
+        const labels = weightsData.map(w => w.symbol);
+        const data = weightsData.map(w => (w.weight * 100).toFixed(1));
+        const colors = ['#00f2fe', '#c084fc', '#fbbf24', '#f87171', '#34d399'].slice(0, weightsData.length);
+
+        return new Chart(ctx.getContext('2d'), {
+            type: 'doughnut',
+            data: {
+                labels: labels,
+                datasets: [{
+                    data: data,
+                    backgroundColor: colors,
+                    borderColor: 'rgba(0, 0, 0, 0.4)',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: { color: '#94a3b8', font: { size: 10 } }
+                    }
+                }
+            }
+        });
+    }
+
+    // 포트폴리오 비교하기
+    window.togglePortfolioComparison = async function() {
+        const compPanel = document.getElementById('comparison-results-panel');
+        if (!compPanel) return;
+
+        if (compPanel.style.display === 'block') {
+            compPanel.style.display = 'none';
+            return;
+        }
+
+        const recPort = JSON.parse(localStorage.getItem('recommended_portfolio_items')) || [];
+        if (portfolio.length === 0 || recPort.length === 0) {
+            alert('비교를 수행하려면 내 포트폴리오와 추천 포트폴리오 모두에 자산이 구성되어 있어야 합니다.');
+            return;
+        }
+
+        compPanel.style.display = 'block';
+
+        // 내 포트폴리오 시뮬레이션
+        const myResult = await runPortfolioSimulation(portfolio, false);
+        // 추천 포트폴리오 시뮬레이션
+        const recResult = await runPortfolioSimulation(recPort, true);
+
+        if (!myResult || !recResult) return;
+
+        // 메트릭 바인딩
+        document.getElementById('comp-my-return').innerText = myResult.totalReturn.toFixed(1) + '%';
+        document.getElementById('comp-my-cagr').innerText = myResult.cagr.toFixed(1) + '%';
+        document.getElementById('comp-my-mdd').innerText = myResult.mdd.toFixed(1) + '%';
+
+        document.getElementById('comp-rec-return').innerText = recResult.totalReturn.toFixed(1) + '%';
+        document.getElementById('comp-rec-cagr').innerText = recResult.cagr.toFixed(1) + '%';
+        document.getElementById('comp-rec-mdd').innerText = recResult.mdd.toFixed(1) + '%';
+
+        // 1. 내 포트폴리오 비중 차트
+        const myCtx = document.getElementById('chart-comp-my-pie');
+        if (compMyPieChart) compMyPieChart.destroy();
+        compMyPieChart = renderDoughnutChart(myCtx, myResult.currentWeights);
+
+        // 2. 추천 포트폴리오 비중 차트
+        const recCtx = document.getElementById('chart-comp-rec-pie');
+        if (compRecPieChart) compRecPieChart.destroy();
+        compRecPieChart = renderDoughnutChart(recCtx, recResult.currentWeights);
+        
+        // 스크롤 이동
+        compPanel.scrollIntoView({ behavior: 'smooth' });
+    };
 
     // 10-Year Backtesting / Tracking Simulation
     const analyzeBtn = document.getElementById('analyze-portfolio-btn');
