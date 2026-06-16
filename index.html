@@ -133,9 +133,18 @@
                 <button class="portfolio-action-btn" id="my-portfolio-btn">
                     💼 내 포트폴리오
                 </button>
-                <button class="portfolio-action-btn" id="google-login-btn" style="background: rgba(255, 255, 255, 0.05); border-color: rgba(255,255,255,0.1); display: flex; align-items: center; gap: 6px;">
-                    👤 로그인
-                </button>
+                <div class="login-timer-container" style="display: flex; flex-direction: column; gap: 6px; align-items: stretch; min-width: 110px;">
+                    <button class="portfolio-action-btn" id="google-login-btn" style="background: rgba(255, 255, 255, 0.05); border-color: rgba(255,255,255,0.1); display: flex; align-items: center; gap: 6px; width: 100%; justify-content: center; margin: 0;">
+                        👤 로그인
+                    </button>
+                    <!-- 타이머 연장 Bar -->
+                    <div class="portfolio-action-btn" id="session-timer-bar" style="display: none; align-items: center; justify-content: space-between; gap: 6px; background: rgba(15, 23, 42, 0.65); border-color: rgba(255, 255, 255, 0.15); height: auto; padding: 4px 10px; cursor: default; width: 100%; box-sizing: border-box; margin: 0;">
+                        <span style="display: flex; align-items: center; gap: 4px; color: #94a3b8; font-weight: 500; font-size: 11px;">
+                            ⏳ <span id="session-countdown" style="font-family: monospace; font-weight: bold; color: var(--accent);">60:00</span>
+                        </span>
+                        <button id="session-extend-btn" style="background: var(--accent); color: #0f172a; border: none; border-radius: 12px; padding: 2px 8px; font-size: 10px; font-weight: 700; cursor: pointer; transition: all 0.2s; white-space: nowrap;">연장하기</button>
+                    </div>
+                </div>
             </div>
         </header>
 
@@ -875,7 +884,7 @@
         <!-- [VIEW 5] 종목 상세 분석 탭 -->
         <section class="tab-view" id="view-detail">
             <!-- 브라우저의 탭 전환 스타일 서브 탭 바 -->
-            <div class="detail-sub-tabs" style="display: flex; gap: 8px; margin-bottom: 24px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); padding-bottom: 1px;">
+            <div class="detail-sub-tabs">
                 <button class="sub-tab-btn active" id="sub-tab-btn-search" onclick="switchSubTab('search')">🔍 주식검색</button>
                 <button class="sub-tab-btn" id="sub-tab-btn-recommended" onclick="switchSubTab('recommended')">💡 추천 포트폴리오</button>
                 <button class="sub-tab-btn" id="sub-tab-btn-analysis" onclick="switchSubTab('analysis')">📊 포트폴리오 분석</button>

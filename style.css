@@ -3283,34 +3283,58 @@ footer a:hover {
 /* 서브 탭 바 */
 .detail-sub-tabs {
     display: flex;
-    gap: 8px;
+    gap: 10px;
     border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-    padding-bottom: 1px;
+    padding-bottom: 12px;
+    margin-bottom: 24px;
+    width: 100%;
 }
 
 .sub-tab-btn {
-    background: transparent;
-    border: none;
-    border-bottom: 2px solid transparent;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
     padding: 10px 16px;
     color: var(--text-muted);
     font-size: 13.5px;
     font-weight: 600;
     cursor: pointer;
-    transition: all 0.2s ease;
-    border-top-left-radius: 8px;
-    border-top-right-radius: 8px;
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    width: 160px; /* 데스크탑에서 일정한 크기 */
+    text-align: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
 }
 
 .sub-tab-btn:hover {
     color: var(--text-primary);
-    background: rgba(255, 255, 255, 0.03);
+    border-color: rgba(255, 255, 255, 0.25);
+    background: rgba(255, 255, 255, 0.05);
+    box-shadow: 0 0 8px rgba(255, 255, 255, 0.08);
 }
 
 .sub-tab-btn.active {
     color: var(--accent);
-    border-bottom-color: var(--accent);
-    background: rgba(0, 242, 254, 0.04);
+    background: rgba(255, 255, 255, 0.07);
+    border-color: rgba(255, 255, 255, 0.45); /* 은은한 silver lining 효과 */
+    box-shadow: 0 0 14px rgba(255, 255, 255, 0.2), inset 0 0 6px rgba(255, 255, 255, 0.08); /* 은은한 네온 톤 */
+}
+
+/* 모바일 탭 대응 */
+@media (max-width: 768px) {
+    .detail-sub-tabs {
+        width: 100%;
+        gap: 6px;
+    }
+    .sub-tab-btn {
+        flex: 1; /* 모바일에서 가로 3분할 */
+        width: auto; /* 고정 너비 해제 */
+        padding: 10px 4px;
+        font-size: 11.5px;
+        justify-content: center;
+    }
 }
 
 /* 서브 뷰 토글 */
@@ -3475,38 +3499,7 @@ footer a:hover {
    15. 포트폴리오 기능 확장 (서브 탭, 추천, 분석, 모바일 증감 버튼) 스타일
    ========================================================================== */
 
-/* 서브 탭 바 */
-.detail-sub-tabs {
-    display: flex;
-    gap: 8px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-    padding-bottom: 1px;
-}
-
-.sub-tab-btn {
-    background: transparent;
-    border: none;
-    border-bottom: 2px solid transparent;
-    padding: 10px 16px;
-    color: var(--text-muted);
-    font-size: 13.5px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    border-top-left-radius: 8px;
-    border-top-right-radius: 8px;
-}
-
-.sub-tab-btn:hover {
-    color: var(--text-primary);
-    background: rgba(255, 255, 255, 0.03);
-}
-
-.sub-tab-btn.active {
-    color: var(--accent);
-    border-bottom-color: var(--accent);
-    background: rgba(0, 242, 254, 0.04);
-}
+/* 중복 스타일 제거 */
 
 /* 서브 뷰 토글 */
 .detail-subview {

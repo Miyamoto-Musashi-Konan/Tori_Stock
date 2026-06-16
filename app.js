@@ -564,7 +564,8 @@ function initDashboardApp() {
         afterDraw: (chart) => {
             if (chart.canvas.id !== 'chart-detail-main' && 
                 chart.canvas.id !== 'chart-ticker-detail' && 
-                chart.canvas.id !== 'chart-portfolio-backtest') return;
+                chart.canvas.id !== 'chart-portfolio-backtest' && 
+                chart.canvas.id !== 'chart-analysis-time-series') return;
 
             const datasets = chart.data.datasets;
             let hasRealData = false;
@@ -641,7 +642,7 @@ function initDashboardApp() {
                         const textX = (startX + boundaryX) / 2;
                         const textY = cy;
                         
-                        const isPortfolio = chart.canvas.id === 'chart-portfolio-backtest';
+                        const isPortfolio = chart.canvas.id === 'chart-portfolio-backtest' || chart.canvas.id === 'chart-analysis-time-series';
                         const titleText = isPortfolio ? '일부 종목 미상장 기간' : '상장일 이전 기간';
                         const subtitleText = isPortfolio ? '(백테스팅 제외)' : '(데이터 없음)';
 
@@ -963,8 +964,9 @@ function initDashboardApp() {
         }
     }
 
-    // 스크롤 시 화면의 플로팅 정보 즉각 숨김 처리 (모든 스크롤 가능한 요소까지 포함)
+    // 스크롤 및 터치 이동 시 화면의 플로팅 정보 즉각 숨김 처리 (모든 스크롤 가능한 요소까지 포함)
     window.addEventListener('scroll', hideFloatingTooltipsAndCrosshairs, { capture: true, passive: true });
+    window.addEventListener('touchmove', hideFloatingTooltipsAndCrosshairs, { capture: true, passive: true });
 
     // 화면의 빈 공간(캔버스가 아닌 영역) 클릭/터치 시 툴팁 및 십자선 즉각 제거
     const handleOutsideChartInteraction = (e) => {
@@ -974,6 +976,18 @@ function initDashboardApp() {
     };
     document.addEventListener('click', handleOutsideChartInteraction);
     document.addEventListener('touchstart', handleOutsideChartInteraction, { passive: true });
+
+    // 캔버스 이탈 시 툴팁 강제 제거 (Event Delegation)
+    document.addEventListener('mouseout', (e) => {
+        if (e.target && e.target.tagName === 'CANVAS') {
+            hideFloatingTooltipsAndCrosshairs();
+        }
+    });
+    document.addEventListener('touchend', (e) => {
+        if (e.target && e.target.tagName === 'CANVAS') {
+            setTimeout(hideFloatingTooltipsAndCrosshairs, 50);
+        }
+    }, { passive: true });
 
     // === Y축 자동 스케일 조정 (zoom/pan 시에 현재 화면에 표시되는 영역의 최저/최고값 기준으로 자동 조정) ===
     function autoScaleYAxis(chart) {
@@ -1120,6 +1134,9 @@ function initDashboardApp() {
 
     // 3. 네비게이션 탭 전환 기능
     window.switchTab = function(tabId) {
+        if (typeof hideFloatingTooltipsAndCrosshairs === 'function') {
+            hideFloatingTooltipsAndCrosshairs();
+        }
         // 기존 활성 탭 및 콘텐츠 제거 (iOS 스타일 글래스 카드 클래스로 변경)
         document.querySelectorAll(".glass-nav-card").forEach(btn => btn.classList.remove("active"));
         document.querySelectorAll(".tab-view").forEach(view => view.classList.remove("active"));
@@ -1158,6 +1175,9 @@ function initDashboardApp() {
 
     // 3-2. 서브 탭 전환 기능 (주식 상세 분석 내 서브 탭용)
     window.switchSubTab = function(subTabId) {
+        if (typeof hideFloatingTooltipsAndCrosshairs === 'function') {
+            hideFloatingTooltipsAndCrosshairs();
+        }
         // 기존 활성 서브 탭 버튼 및 뷰 제거
         document.querySelectorAll(".sub-tab-btn").forEach(btn => btn.classList.remove("active"));
         document.querySelectorAll(".detail-subview").forEach(view => view.classList.remove("active"));
@@ -5003,6 +5023,7 @@ function initDashboardApp() {
     let analysisPeriod = '10y';
     let analysisSimulationSeries = [];
     let analysisTimeSeriesChart = null;
+    let analysisLatestStartDate = 0;
 
     // Helper to calculate portfolio metrics using Common Start Date backtesting
     async function calculatePortfolioMetrics(targetData) {
@@ -5052,6 +5073,7 @@ function initDashboardApp() {
         if (latestStartDate === 0) {
             latestStartDate = now - 10 * 365 * 24 * 60 * 60 * 1000;
         }
+        analysisLatestStartDate = latestStartDate;
 
         // 2. Build timeGrid starting from latestStartDate
         const availableMs = now - latestStartDate;
@@ -5519,6 +5541,17 @@ function initDashboardApp() {
                 throw new Error("Insufficient historical data points from API");
             }
 
+            // 실제 데이터 성공 시 상장일(첫 데이터 포인트 시작 시점)을 캐싱하여, 향후 API 실패나 포트폴리오 로직에 활용
+            if (history.length > 0) {
+                try {
+                    const cache = JSON.parse(localStorage.getItem('ticker_ipo_cache') || '{}');
+                    cache[symbol.toUpperCase()] = history[0].time;
+                    localStorage.setItem('ticker_ipo_cache', JSON.stringify(cache));
+                } catch(err) {
+                    console.warn("Failed to cache IPO date:", err);
+                }
+            }
+
             return { history, currency };
         } catch (e) {
             console.warn(`Failed to fetch 10y history for ${symbol}, simulating...`);
@@ -5527,8 +5560,32 @@ function initDashboardApp() {
             const weekMs = 7 * 24 * 60 * 60 * 1000;
             
             const isSpcx = (symbol.toUpperCase() === 'SPCX');
-            const listingTime = isSpcx ? new Date('2025-12-01').getTime() : (now - (10 * 365 * 24 * 60 * 60 * 1000));
-            const steps = isSpcx ? Math.max(5, Math.floor((now - listingTime) / weekMs)) : 520;
+            
+            // IPO 캐시나 mockData 설정을 조회하여 실제 상장일 기준 시뮬레이션 제한
+            let listingTime = null;
+            try {
+                const cache = JSON.parse(localStorage.getItem('ticker_ipo_cache') || '{}');
+                if (cache[symbol.toUpperCase()]) {
+                    listingTime = cache[symbol.toUpperCase()];
+                }
+            } catch(err) {}
+            
+            if (!listingTime && typeof tickerMockData !== 'undefined') {
+                // mock 데이터에서 찾기
+                for (const ex in tickerMockData) {
+                    const found = tickerMockData[ex].find(s => s.symbol === symbol.toUpperCase());
+                    if (found && found.listingDate) {
+                        listingTime = new Date(found.listingDate).getTime();
+                        break;
+                    }
+                }
+            }
+            
+            if (!listingTime) {
+                listingTime = isSpcx ? new Date('2025-12-01').getTime() : (now - (10 * 365 * 24 * 60 * 60 * 1000));
+            }
+            
+            const steps = Math.max(5, Math.floor((now - listingTime) / weekMs));
             
             const isKRW_JPY = exchange === 'kospi' || exchange === 'kosdaq' || exchange === 'japan';
             const baseValue = isKRW_JPY ? (exchange === 'japan' ? 5000 : 50000) : 150;
@@ -5810,10 +5867,11 @@ function initDashboardApp() {
         };
         limitMs = periodConfig[analysisPeriod] || limitMs;
 
-        const filteredData = analysisSimulationSeries.filter(d => (now - d.x) <= limitMs);
+        const filteredData = analysisSimulationSeries.filter(d => (now - d.x) <= limitMs && d.x >= analysisLatestStartDate);
 
         analysisTimeSeriesChart = new Chart(ctx.getContext('2d'), {
             type: 'line',
+            plugins: [noDataPlaceholderPlugin],
             data: {
                 datasets: [{
                     label: selectedAnalysisTarget === 'my' ? '내 포트폴리오' : '추천 포트폴리오',
@@ -5832,6 +5890,12 @@ function initDashboardApp() {
                 maintainAspectRatio: false,
                 plugins: {
                     legend: { display: false },
+                    noDataPlaceholder: {
+                        active: analysisLatestStartDate !== 0 && analysisLatestStartDate > now - limitMs,
+                        listingDate: analysisLatestStartDate,
+                        isPlaceholder: false,
+                        startValue: filteredData.length > 0 ? filteredData[0].y : 10000000
+                    },
                     tooltip: {
                         callbacks: {
                             label: function(context) {
@@ -5843,9 +5907,11 @@ function initDashboardApp() {
                 scales: {
                     x: {
                         type: 'time',
+                        min: now - limitMs,
+                        max: now,
                         time: { 
-                            unit: analysisPeriod === '6mo' || analysisPeriod === '1y' ? 'month' : 'year', 
-                            displayFormats: { month: 'yyyy-MM', year: 'yyyy' } 
+                             unit: analysisPeriod === '6mo' || analysisPeriod === '1y' ? 'month' : 'year', 
+                             displayFormats: { month: 'yyyy-MM', year: 'yyyy' } 
                         },
                         grid: { color: 'rgba(255, 255, 255, 0.03)' }
                     },
@@ -6027,6 +6093,131 @@ function initDashboardApp() {
     const googleSyncNowBtn = document.getElementById('google-sync-now-btn');
     const googleLogoutBtns = document.querySelectorAll('#google-logout-btn');
 
+    // === 세션 타이머 및 카카오톡 유입 강제 클리어 ===
+    let sessionTimeoutSeconds = 3600; // 1시간
+    let sessionTimerInterval = null;
+    let hasAlertedSession = false;
+
+    function checkAndClearSharedAccess() {
+        const ua = navigator.userAgent.toLowerCase();
+        const isSharedMedium = /kakaotalk|line|instagram|fbav|fb_iab|fb_cdn|messenger/i.test(ua);
+        
+        const urlParams = new URLSearchParams(window.location.search);
+        const isSharedLink = urlParams.get('shared') === 'true' || urlParams.get('from') === 'link';
+        
+        if (isSharedMedium || isSharedLink) {
+            console.log("Shared access or in-app browser detected. Force clearing session storage and local personal data.");
+            
+            localStorage.removeItem('google_oauth_token');
+            localStorage.removeItem('google_user_profile');
+            localStorage.removeItem('google_drive_granted');
+            localStorage.removeItem('google_drive_last_backup');
+            localStorage.removeItem('my_portfolio_items');
+            localStorage.removeItem('recent_searches');
+            localStorage.removeItem('ticker_ipo_cache');
+            if (typeof MOCK_DRIVE_STORAGE_KEY !== 'undefined') {
+                localStorage.removeItem(MOCK_DRIVE_STORAGE_KEY);
+            }
+            
+            oauthToken = null;
+            portfolio = [];
+            recentSearches = [];
+        }
+    }
+
+    function initSessionTimer() {
+        if (sessionTimerInterval) {
+            clearInterval(sessionTimerInterval);
+            sessionTimerInterval = null;
+        }
+        
+        const timerBar = document.getElementById('session-timer-bar');
+        const extendBtn = document.getElementById('session-extend-btn');
+        
+        if (!oauthToken) {
+            if (timerBar) timerBar.style.display = 'none';
+            return;
+        }
+        
+        if (timerBar) timerBar.style.display = 'flex';
+        
+        sessionTimeoutSeconds = 3600;
+        
+        if (!hasAlertedSession && !sessionStorage.getItem('session_alerted')) {
+            alert('로그인 후 1시간 동안 동작이 없으면 로그아웃 됩니다.');
+            sessionStorage.setItem('session_alerted', 'true');
+            hasAlertedSession = true;
+        }
+        
+        updateSessionTimerUI();
+        
+        sessionTimerInterval = setInterval(() => {
+            sessionTimeoutSeconds--;
+            updateSessionTimerUI();
+            
+            if (sessionTimeoutSeconds <= 0) {
+                clearInterval(sessionTimerInterval);
+                sessionTimerInterval = null;
+                handleAutoLogout();
+            }
+        }, 1000);
+        
+        if (extendBtn && !extendBtn.dataset.bound) {
+            extendBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                playHapticSound('success');
+                sessionTimeoutSeconds = 3600;
+                updateSessionTimerUI();
+                showToast("로그인 세션이 60분으로 연장되었습니다.", "info");
+            });
+            extendBtn.dataset.bound = "true";
+        }
+    }
+
+    function updateSessionTimerUI() {
+        const countdownEl = document.getElementById('session-countdown');
+        if (!countdownEl) return;
+        const mins = Math.floor(sessionTimeoutSeconds / 60);
+        const secs = sessionTimeoutSeconds % 60;
+        countdownEl.innerText = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    }
+
+    function handleAutoLogout() {
+        localStorage.removeItem('google_oauth_token');
+        localStorage.removeItem('google_user_profile');
+        localStorage.removeItem('google_drive_granted');
+        localStorage.removeItem('google_drive_last_backup');
+        localStorage.removeItem('my_portfolio_items');
+        localStorage.removeItem('recent_searches');
+        localStorage.removeItem('ticker_ipo_cache');
+        if (typeof MOCK_DRIVE_STORAGE_KEY !== 'undefined') {
+            localStorage.removeItem(MOCK_DRIVE_STORAGE_KEY);
+        }
+        
+        oauthToken = null;
+        portfolio = [];
+        recentSearches = [];
+        
+        updateGoogleAuthUI();
+        if (typeof renderPortfolioModal === 'function') {
+            renderPortfolioModal();
+        }
+        
+        alert('1시간 동안 활동이 없어 자동 로그아웃 되었습니다.');
+        window.location.reload();
+    }
+
+    function resetSessionTimerByActivity() {
+        if (oauthToken && sessionTimeoutSeconds > 0) {
+            sessionTimeoutSeconds = 3600;
+        }
+    }
+
+    const activityEvents = ['mousemove', 'keydown', 'click', 'scroll', 'touchstart'];
+    activityEvents.forEach(eventName => {
+        window.addEventListener(eventName, resetSessionTimerByActivity, { passive: true });
+    });
+
     // UI toggle based on login status
     function updateGoogleAuthUI() {
         const localToken = localStorage.getItem('google_oauth_token');
@@ -6078,6 +6269,8 @@ function initDashboardApp() {
                 googleLoginBtn.innerHTML = `👤 로그인`;
             }
         }
+        
+        initSessionTimer();
     }
 
     // Modal show/hide
@@ -6626,6 +6819,7 @@ function initDashboardApp() {
         });
     }
     // Initialize UI on load
+    checkAndClearSharedAccess();
     updateGoogleAuthUI();
     updatePortfolioHeaderBadge();
     
