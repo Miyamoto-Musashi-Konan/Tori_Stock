@@ -1,4 +1,4 @@
-$port = 8005
+$port = 8000
 $listener = New-Object System.Net.Sockets.TcpListener([System.Net.IPAddress]::Any, $port)
 $listener.Start()
 Write-Host "TCP Web Server started on port $port..."
@@ -32,7 +32,7 @@ try {
                             $urlPath = $urlPath.Split('?')[0]
                             
                             $relative = $urlPath.TrimStart('/')
-                            $baseDir = [System.IO.Directory]::GetCurrentDirectory()
+                            $baseDir = $PSScriptRoot
                             $filePath = Join-Path $baseDir $relative.Replace("/", "\")
                             
                             Write-Host "Requested path: $urlPath -> Resolved file: $filePath"

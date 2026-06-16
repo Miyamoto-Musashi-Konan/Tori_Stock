@@ -3,7 +3,7 @@
  * Chart.js 연동, 데이터 로딩, 실시간 갱신 및 상세 차트 그리기 기능 제공
  */
 
-document.addEventListener("DOMContentLoaded", () => {
+function initDashboardApp() {
     // 1. 상태 및 전역 변수 정의
     let miniCharts = {};
 
@@ -150,6 +150,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 // 잠금 모드 중이면 일반 이벤트 추적 스킵
                 if (chart._lockedCandle) return;
                 chart._mouseEvent = args.event;
+                chart.draw();
 
                 // 상세 캔들 차트에서만 실시간 가격 트래킹
                 if (chart.canvas.id === 'chart-ticker-detail' && chart.scales && chart.scales.y) {
@@ -212,6 +213,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 // 잠금 모드가 아닐 때만 마우스 이벤트 초기화
                 if (!chart._lockedCandle) {
                     chart._mouseEvent = null;
+                    chart.draw();
 
                     if (chart.canvas.id === 'chart-ticker-detail') {
                         const descEl      = document.getElementById('detail-candle-desc');
@@ -518,7 +520,183 @@ document.addEventListener("DOMContentLoaded", () => {
             }
         }
     };
+    const drawGoogleFinanceWave = (ctx, cx, cy, w) => {
+        ctx.save();
+        ctx.beginPath();
+        ctx.setLineDash([3, 4]);
+        ctx.strokeStyle = 'rgba(96, 165, 250, 0.8)';
+        ctx.lineWidth = 1.5;
+        
+        const x0 = cx - w / 2;
+        const x3 = cx + w / 2;
+        
+        ctx.beginPath();
+        const numPoints = 100;
+        for (let i = 0; i <= numPoints; i++) {
+            const t = i / numPoints;
+            const x = x0 + t * (x3 - x0);
+            const y = cy - 20 * Math.sin(t * Math.PI * 3);
+            if (i === 0) {
+                ctx.moveTo(x, y);
+            } else {
+                ctx.lineTo(x, y);
+            }
+        }
+        ctx.stroke();
+        
+        ctx.fillStyle = '#60a5fa';
+        ctx.setLineDash([]);
+        for (let i = 0; i < 4; i++) {
+            const t = i / 3;
+            const x = x0 + t * (x3 - x0);
+            ctx.beginPath();
+            ctx.arc(x, cy, 4, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = '#0f172a';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+        }
+        ctx.restore();
+    };
+
+        const noDataPlaceholderPlugin = {
+        id: 'noDataPlaceholder',
+        afterDraw: (chart) => {
+            if (chart.canvas.id !== 'chart-detail-main' && 
+                chart.canvas.id !== 'chart-ticker-detail' && 
+                chart.canvas.id !== 'chart-portfolio-backtest') return;
+
+            const datasets = chart.data.datasets;
+            let hasRealData = false;
+            if (datasets && datasets.length > 0) {
+                const data = datasets[0].data;
+                if (data && data.length > 0) {
+                    hasRealData = data.some(d => d && !d.isPlaceholder);
+                }
+            }
+            
+            const ctx = chart.ctx;
+            const chartArea = chart.chartArea;
+            if (!chartArea) return;
+            
+            const cx = (chartArea.left + chartArea.right) / 2;
+            const cy = (chartArea.top + chartArea.bottom) / 2;
+
+            if (!hasRealData) {
+                ctx.save();
+                ctx.fillStyle = '#0b0f19';
+                ctx.fillRect(chartArea.left, chartArea.top, chartArea.width, chartArea.height);
+                ctx.restore();
+
+                drawGoogleFinanceWave(ctx, cx, cy - 10, 160);
+                
+                ctx.save();
+                ctx.fillStyle = '#94a3b8';
+                ctx.font = '500 13px Inter, "Malgun Gothic", sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'top';
+                ctx.fillText('데이터 없음', cx, cy + 20);
+                ctx.restore();
+            } else {
+                const data = datasets[0].data;
+                const firstRealPoint = data.find(d => d && !d.isPlaceholder);
+                if (firstRealPoint) {
+                    const scaleX = chart.scales.x;
+                    const scaleY = chart.scales.y;
+                    
+                    const boundaryX = scaleX.getPixelForValue(firstRealPoint.x);
+                    const startX = chartArea.left;
+                    
+                    if (boundaryX > startX + 5 && boundaryX < chartArea.right) {
+                        const listingPriceVal = firstRealPoint.o !== undefined ? firstRealPoint.o : (firstRealPoint.y !== undefined ? firstRealPoint.y : firstRealPoint.c);
+                        const listingPriceY = scaleY.getPixelForValue(listingPriceVal);
+                        
+                        // 상장일 이전 영역에 투명하고 차분한 어두운 차폐 배경 드로잉 (거부감 없는 미학적 처리)
+                        ctx.save();
+                        ctx.fillStyle = 'rgba(239, 68, 68, 0.04)'; 
+                        ctx.fillRect(startX, chartArea.top, boundaryX - startX, chartArea.height);
+                        ctx.restore();
+
+                        ctx.save();
+                        ctx.beginPath();
+                        ctx.setLineDash([2, 4]);
+                        ctx.strokeStyle = 'rgba(148, 163, 184, 0.3)';
+                        ctx.lineWidth = 1.5;
+                        ctx.moveTo(startX, listingPriceY);
+                        ctx.lineTo(boundaryX, listingPriceY);
+                        ctx.stroke();
+                        ctx.restore();
+
+                        // 상장일 구분 실선 점선 드로잉
+                        ctx.save();
+                        ctx.beginPath();
+                        ctx.setLineDash([4, 4]);
+                        ctx.strokeStyle = 'rgba(251, 191, 36, 0.35)'; // 골드/앰버 점선
+                        ctx.lineWidth = 1.2;
+                        ctx.moveTo(boundaryX, chartArea.top);
+                        ctx.lineTo(boundaryX, chartArea.bottom);
+                        ctx.stroke();
+                        ctx.restore();
+                        
+                        const textX = (startX + boundaryX) / 2;
+                        const textY = cy;
+                        
+                        const isPortfolio = chart.canvas.id === 'chart-portfolio-backtest';
+                        const titleText = isPortfolio ? '일부 종목 미상장 기간' : '상장일 이전 기간';
+                        const subtitleText = isPortfolio ? '(백테스팅 제외)' : '(데이터 없음)';
+
+                        // 프리미엄 다크 글래스모피즘 안내 카드 드로잉
+                        const badgeWidth = 150;
+                        const badgeHeight = 46;
+                        const bx = textX - badgeWidth / 2;
+                        const by = textY - badgeHeight / 2;
+                        const radius = 8;
+                        
+                        ctx.save();
+                        ctx.beginPath();
+                        ctx.moveTo(bx + radius, by);
+                        ctx.lineTo(bx + badgeWidth - radius, by);
+                        ctx.quadraticCurveTo(bx + badgeWidth, by, bx + badgeWidth, by + radius);
+                        ctx.lineTo(bx + badgeWidth, by + badgeHeight - radius);
+                        ctx.quadraticCurveTo(bx + badgeWidth, by + badgeHeight, bx + badgeWidth - radius, by + badgeHeight);
+                        ctx.lineTo(bx + radius, by + badgeHeight);
+                        ctx.quadraticCurveTo(bx, by + badgeHeight, bx, by + badgeHeight - radius);
+                        ctx.lineTo(bx, by + radius);
+                        ctx.quadraticCurveTo(bx, by, bx + radius, by);
+                        ctx.closePath();
+                        
+                        ctx.fillStyle = 'rgba(15, 23, 42, 0.75)'; // dark glassmorphic bg
+                        ctx.strokeStyle = 'rgba(251, 191, 36, 0.25)'; // subtle gold border
+                        ctx.lineWidth = 1;
+                        ctx.fill();
+                        ctx.stroke();
+                        ctx.restore();
+                        
+                        // 상장일 이전 주의 메시지 출력
+                        ctx.save();
+                        ctx.fillStyle = 'rgba(248, 250, 252, 0.85)'; // 거의 흰색 텍스트
+                        ctx.font = '500 11.5px "Malgun Gothic", sans-serif';
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'middle';
+                        ctx.fillText(titleText, textX, textY - 8);
+                        
+                        ctx.fillStyle = 'rgba(148, 163, 184, 0.9)'; // 연한 회색 서브텍스트
+                        ctx.font = '500 10.5px "Malgun Gothic", sans-serif';
+                        ctx.fillText(subtitleText, textX, textY + 9);
+                        
+                        // 상장일 뱃지 텍스트 출력
+                        ctx.fillStyle = '#fbbf24'; // 생생한 골드 텍스트
+                        ctx.font = 'bold 9.5px "Malgun Gothic", sans-serif';
+                        ctx.fillText(isPortfolio ? '최근 상장일' : '상장일', boundaryX, chartArea.top + 15);
+                        ctx.restore();
+                    }
+                }
+            }
+        }
+    };
+
     Chart.register(customCrosshairPlugin);
+    Chart.register(noDataPlaceholderPlugin);
 
     // ── 캔들 잠금(Ruler) 모드 이벤트 핸들러 ──
     // click: 캔들 위에서 클릭하면 해당 캔들 X를 잠금 / 이미 잠금이면 해제
@@ -978,6 +1156,38 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     };
 
+    // 3-2. 서브 탭 전환 기능 (주식 상세 분석 내 서브 탭용)
+    window.switchSubTab = function(subTabId) {
+        // 기존 활성 서브 탭 버튼 및 뷰 제거
+        document.querySelectorAll(".sub-tab-btn").forEach(btn => btn.classList.remove("active"));
+        document.querySelectorAll(".detail-subview").forEach(view => view.classList.remove("active"));
+
+        // 신규 서브 탭 및 뷰 활성화
+        const targetBtn = document.getElementById(`sub-tab-btn-${subTabId}`);
+        if (targetBtn) targetBtn.classList.add("active");
+
+        const targetView = document.getElementById(`detail-subview-${subTabId}`);
+        if (targetView) targetView.classList.add("active");
+
+        // 서브 탭 개별 초기화 및 렌더링 호출
+        if (subTabId === 'recommended') {
+            if (typeof renderRecommendedPortfolioCards === 'function') {
+                renderRecommendedPortfolioCards();
+            }
+        } else if (subTabId === 'analysis') {
+            if (typeof runPortfolioAnalysis === 'function') {
+                runPortfolioAnalysis();
+            } else {
+                if (typeof renderPortfolioWeightCharts === 'function') {
+                    renderPortfolioWeightCharts();
+                }
+                if (typeof renderComparisonCharts === 'function') {
+                    renderComparisonCharts();
+                }
+            }
+        }
+    };
+
     // 4. 천 단위 컴마 포맷팅용 헬퍼 함수
     function formatNumber(num, decimals = 2) {
         return new Intl.NumberFormat('ko-KR', {
@@ -1299,7 +1509,6 @@ document.addEventListener("DOMContentLoaded", () => {
         });
         adjustChartHeight(marketSummaryChart, 260);
         
-        // 시장종합 거래량 차트
         const volCtx = document.getElementById('chart-summary-volume');
         if (volCtx) {
             if (marketSummaryVolumeChart) {
@@ -1591,7 +1800,6 @@ document.addEventListener("DOMContentLoaded", () => {
             }
         });
 
-        // 차트 wrapper에 클릭 이벤트: BIS 실질실효환율 통계 페이지로 이동
         const wrapper = document.getElementById("chart-historical-main").parentElement;
         if (wrapper) {
             wrapper.addEventListener('click', () => {
@@ -1599,7 +1807,6 @@ document.addEventListener("DOMContentLoaded", () => {
             });
         }
         
-        // 초기 역사적 해설 카드 렌더링
         updateHistoricalCommentary();
     }
 
@@ -1611,12 +1818,11 @@ document.addEventListener("DOMContentLoaded", () => {
         const lastItem = historicalData[historicalData.length - 1];
         const prevItem = historicalData[historicalData.length - 2];
         
-        const lastLabel = lastItem.label; // e.g. "2026-06"
+        const lastLabel = lastItem.label;
         const parts = lastLabel.split("-");
         const year = parts[0];
         const month = parseInt(parts[1]);
         
-        // Calculate monthly changes
         const reerChange = lastItem.reer - prevItem.reer;
         const reerPct = (reerChange / prevItem.reer) * 100;
         
@@ -1626,19 +1832,15 @@ document.addEventListener("DOMContentLoaded", () => {
         
         const usdjpyVal = lastItem.usdjpy || 157.0;
         
-        // standard benchmark starts at 2000-01 (historicalData[0])
         const firstItem = historicalData[0];
         
-        // KOSPI change vs prev month
         const kospiPct = ((lastItem.kospi - prevItem.kospi) / prevItem.kospi) * 100;
         const sp500Pct = ((lastItem.sp500 - prevItem.sp500) / prevItem.sp500) * 100;
         
-        // Determine trends
         const reerDir = reerChange >= 0 ? "상승" : "하락";
         const reerColor = reerChange >= 0 ? "var(--bullish)" : "var(--bearish)";
         const reerIcon = reerChange >= 0 ? "📈" : "📉";
         
-        // Evaluation level: 100 is base (year 2000).
         let valuationComment = "";
         if (lastItem.reer < 85) {
             valuationComment = "현재 원화의 실질실효환율(REER)은 85 이하의 <strong>역사적 저평가(Under-valued) 국면</strong>에 머물러 있습니다. 이는 2008년 금융위기 수준에 비견되는 강한 원화 저평가 상태로, 수출 기업의 가격 경쟁력에는 긍정적이나 국내 수입 물가 상승 및 실질 구매력 감소 압력으로 작용하고 있습니다.";
@@ -1828,7 +2030,6 @@ document.addEventListener("DOMContentLoaded", () => {
         document.getElementById('travel-card-usd').style.display = base === 'krw' ? 'flex' : 'none';
         document.getElementById('travel-card-krw').style.display = base === 'usd' ? 'flex' : 'none';
         
-        // 방향 리셋
         travelDirectionMap = {};
         const badges = document.querySelectorAll('.travel-unit-badge');
         badges.forEach(b => {
@@ -1859,7 +2060,6 @@ document.addEventListener("DOMContentLoaded", () => {
         if (!canvas) return;
         const ctx = canvas.getContext('2d');
         
-        // 고해상도 레티나 디스플레이 대응 크기 스케일링 설정
         const dpr = window.devicePixelRatio || 1;
         const width = 80;
         const height = 32;
@@ -1870,7 +2070,6 @@ document.addEventListener("DOMContentLoaded", () => {
         ctx.clearRect(0, 0, width, height);
         if (!ohlcData || ohlcData.length === 0) return;
         
-        // 데이터 극값(Min/Max) 탐색
         let minL = Infinity;
         let maxH = -Infinity;
         ohlcData.forEach(d => {
@@ -1893,10 +2092,8 @@ document.addEventListener("DOMContentLoaded", () => {
             const yLow = scaleY(d.l);
             
             const isUp = d.c >= d.o;
-            // 국내 표준 환율 캔들 컬러: 상승 빨간색(#f43f5e), 하락 파란색(#3b82f6)
             const color = isUp ? '#f43f5e' : '#3b82f6';
             
-            // 꼬리 그리기 (High-Low 얇은 선)
             ctx.beginPath();
             ctx.moveTo(x, yHigh);
             ctx.lineTo(x, yLow);
@@ -1904,7 +2101,6 @@ document.addEventListener("DOMContentLoaded", () => {
             ctx.lineWidth = 1;
             ctx.stroke();
             
-            // 몸통 그리기 (Open-Close 두꺼운 바)
             ctx.beginPath();
             ctx.moveTo(x, Math.min(yOpen, yClose));
             ctx.lineTo(x, Math.max(yOpen, yClose));
@@ -1926,7 +2122,6 @@ document.addEventListener("DOMContentLoaded", () => {
         
         const fetchSparkline = async (key, sym) => {
             try {
-                // 10일치 일봉 데이터 호출
                 const url = `https://query1.finance.yahoo.com/v8/finance/chart/${sym}?interval=1d&range=10d`;
                 const json = await fetchWithProxyFallback(url);
                 const result = json.chart.result[0];
@@ -1952,7 +2147,6 @@ document.addEventListener("DOMContentLoaded", () => {
                     }
                 }
                 
-                // 최근 7개만 사용
                 const cleanCandles = candles.slice(-7);
                 if (cleanCandles.length > 0) {
                     drawMiniCandleChart(`mini-candle-${key}`, cleanCandles);
@@ -1961,7 +2155,6 @@ document.addEventListener("DOMContentLoaded", () => {
                 }
             } catch (err) {
                 console.warn(`Failed to fetch sparkline for ${sym}, generating mock sparkline:`, err);
-                // 모의 캔들 스파크라인 생성 백업
                 const mockCandles = [];
                 let baseVal = key === 'eur' ? 1.08 : (key === 'jpy' ? 157.0 : (key === 'gbp' ? 1.26 : (key === 'cny' ? 7.24 : 1350.0)));
                 for (let i = 0; i < 7; i++) {
@@ -1984,7 +2177,7 @@ document.addEventListener("DOMContentLoaded", () => {
     function updateFearGreedMeter(value) {
         let scoreVal = parseInt(value);
         if (isNaN(scoreVal)) {
-            scoreVal = 68; // 기본값
+            scoreVal = 68;
         }
         
         const minDegree = -90;
@@ -2030,10 +2223,8 @@ document.addEventListener("DOMContentLoaded", () => {
     function updateDashboardUI(tickResult) {
         window.latestTickResult = tickResult;
 
-        // A. 실시간 최근 업데이트 시간 표시
         lastUpdateTimeEl.innerText = `실시간 데이터 갱신됨 (${tickResult.timestamp})`;
 
-        // B. 4대 지수 현황 UI 갱신 및 차트 데이터 갱신
         Object.keys(tickResult.indices).forEach(key => {
             const data = tickResult.indices[key];
             const priceEl = document.getElementById(`${key}-price`);
@@ -2045,7 +2236,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 const isUp = data.current >= prevPrice;
 
                 cardEl.classList.remove("tick-up", "tick-down");
-                void cardEl.offsetWidth; // DOM reflow 유도
+                void cardEl.offsetWidth;
                 cardEl.classList.add(isUp ? "tick-up" : "tick-down");
 
                 priceEl.innerText = formatNumber(data.current, 2);
@@ -2080,7 +2271,6 @@ document.addEventListener("DOMContentLoaded", () => {
             }
         });
 
-        // C. 지표 환율 UI 및 데이터 변환 처리
         Object.keys(tickResult.currencies).forEach(key => {
             const data = tickResult.currencies[key];
             const rateEl = document.getElementById(`rate-${key}`);
@@ -2100,7 +2290,6 @@ document.addEventListener("DOMContentLoaded", () => {
                 }
             }
 
-            // 여행용 환율 기준 데이터 갱신 및 변환된 통화값 실시간 반영
             const baseCurrencyKey = key.replace('_travel', '');
             if (travelExchangeRates[baseCurrencyKey] !== undefined) {
                 if (baseCurrencyKey === 'jpy') {
@@ -2111,9 +2300,8 @@ document.addEventListener("DOMContentLoaded", () => {
                     travelExchangeRates[baseCurrencyKey] = data.current;
                 }
 
-                // 달러 베이스 환율 변환 (역산 계산)
                 const usdRate = travelExchangeRates.usd;
-                usdExchangeRates.krw = usdRate; // KRW 환율 실시간 업데이트 동기화
+                usdExchangeRates.krw = usdRate;
                 Object.keys(travelExchangeRates).forEach(k => {
                     if (k === 'usd') return;
                     if (k === 'jpy' || k === 'vnd') {
@@ -2123,7 +2311,6 @@ document.addEventListener("DOMContentLoaded", () => {
                     }
                 });
 
-                // 여행 환율 UI 갱신
                 const travelRateValEl = document.getElementById(`travel-rate-val-${baseCurrencyKey}`);
                 const travelRateLblEl = document.getElementById(`travel-rate-lbl-${baseCurrencyKey}`);
                 const travelUsdBasisEl = document.getElementById(`travel-usd-basis-${baseCurrencyKey}`);
@@ -2139,7 +2326,6 @@ document.addEventListener("DOMContentLoaded", () => {
                             travelRateLblEl.innerText = `현재 환율 (${unit}${name} 기준)`;
                         }
                     } else {
-                        // USD 기준 환율 표시
                         if (baseCurrencyKey === 'krw') {
                             travelRateValEl.innerText = `${formatNumber(usdExchangeRates.krw, 2)} KRW`;
                             if (travelRateLblEl) travelRateLblEl.innerText = "현재 환율 (1달러 기준)";
@@ -2187,14 +2373,11 @@ document.addEventListener("DOMContentLoaded", () => {
         
         calculateTravelExchange('krw');
 
-        // D. 주요 달러 베이스 통화 환율 업데이트 (새로운 Chart.js 막대 차트 연동)
         updateDollarBasisChart();
 
-        // E. Fear & Greed 지수 업데이트
         const currentVal = parseInt(largeMeterValEl.textContent);
         updateFearGreedMeter(isNaN(currentVal) ? 68 : currentVal);
 
-        // F. 역사적 지수 흐름 차트 실시간 마지막 데이터 포인트 동기화 및 해설 업데이트
         if (historicalChart && historicalData && historicalData.length > 0) {
             const lastIdx = historicalData.length - 1;
             const lastItem = historicalData[lastIdx];
@@ -2209,7 +2392,6 @@ document.addEventListener("DOMContentLoaded", () => {
             updateHistoricalCommentary();
         }
 
-        // F. 상세 분석 페이지 실시간 데이터 동기화 (종목상세 Header 가격 연동)
         if (currentTickerState && currentTickerState.symbol) {
             const sym = currentTickerState.symbol.toUpperCase();
             let liveVal = null;
@@ -2217,7 +2399,6 @@ document.addEventListener("DOMContentLoaded", () => {
             let livePct = null;
             let decimals = 2;
 
-            // 주요 지수 동기화
             if (sym === '^KS11' || sym === 'KOSPI') {
                 const d = tickResult.indices.kospi;
                 liveVal = d.current; liveChange = d.netChange; livePct = d.pctChange;
@@ -2232,7 +2413,6 @@ document.addEventListener("DOMContentLoaded", () => {
                 liveVal = d.current; liveChange = d.netChange; livePct = d.pctChange;
             }
             
-            // 주요 환율 동기화 (원화 대비 및 달러 대비 호환 매핑)
             const currKey = currencyKeyMap[sym];
             if (currKey && tickResult.currencies[currKey]) {
                 const d = tickResult.currencies[currKey];
@@ -2250,7 +2430,6 @@ document.addEventListener("DOMContentLoaded", () => {
                     detailChangeEl.className = liveChange >= 0 ? "index-change-badge bullish-badge" : "index-change-badge bearish-badge";
                 }
 
-                // 실시간 차트 봉/라인의 마지막 데이터 포인트를 라이브 틱 가격으로 동시 업데이트
                 if (detailChart && currentDetailData && currentDetailData.length > 0) {
                     const lastIdx = currentDetailData.length - 1;
                     const lastDataPoint = currentDetailData[lastIdx];
@@ -2311,18 +2490,16 @@ document.addEventListener("DOMContentLoaded", () => {
     function startRealtimeTickLoop() {
         setInterval(refreshRealData, 30000);
         
-        // 2초 실시간 시뮬레이션 틱
         setInterval(() => {
             const tickResult = window.MockDataModule.tick();
             updateDashboardUI(tickResult);
         }, 2000);
     }
 
-    // 11. CORS 우회용 주식 시세 API 호출 루프
     async function fetchWithProxyFallback(url) {
         const createFetch = async (proxyUrl, parseFunc) => {
             const controller = new AbortController();
-            const timeout = setTimeout(() => controller.abort(), 6000); // 6초 타임아웃
+            const timeout = setTimeout(() => controller.abort(), 6000);
             try {
                 const res = await fetch(proxyUrl, { signal: controller.signal });
                 clearTimeout(timeout);
@@ -2419,17 +2596,15 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     async function loadRealExchangeRates() {
-        // Yahoo Finance 실시간 환율 또는 open.er-api.com 폴백에서 USD 기준 환율 가져오기
-        let rates = null;        // { KRW, JPY, EUR, CNY, ... } — 1 USD = X 외화 형식
-        let prevCloseRates = null; // 동일 형식의 전일 종가
+        let rates = null;
+        let prevCloseRates = null;
         let dataSource = '';
 
-        // ── 1차: Yahoo Finance v8 API (실시간, 초 단위 갱신) ──
         try {
             const yahooSymbols = [
                 { symbol: 'USDKRW=X', key: 'KRW', inverse: false },
                 { symbol: 'USDJPY=X', key: 'JPY', inverse: false },
-                { symbol: 'EURUSD=X', key: 'EUR', inverse: true },   // EUR/USD → USD/EUR 역수
+                { symbol: 'EURUSD=X', key: 'EUR', inverse: true },
                 { symbol: 'USDCNY=X', key: 'CNY', inverse: false },
                 { symbol: 'USDVND=X', key: 'VND', inverse: false },
                 { symbol: 'USDTHB=X', key: 'THB', inverse: false },
@@ -2438,7 +2613,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 { symbol: 'USDPHP=X', key: 'PHP', inverse: false },
                 { symbol: 'USDHKD=X', key: 'HKD', inverse: false },
                 { symbol: 'USDMYR=X', key: 'MYR', inverse: false },
-                { symbol: 'GBPUSD=X', key: 'GBP', inverse: true }    // GBP/USD → USD/GBP 역수
+                { symbol: 'GBPUSD=X', key: 'GBP', inverse: true }
             ];
 
             const fetchPromises = yahooSymbols.map(async (pair) => {
@@ -2468,34 +2643,27 @@ document.addEventListener("DOMContentLoaded", () => {
 
             if (!rates.KRW) throw new Error("USD/KRW not available from Yahoo Finance");
             dataSource = 'Yahoo Finance (실시간)';
-            console.log(`[환율] Yahoo Finance 실시간 데이터 로드 성공 — USD/KRW: ${rates.KRW.toFixed(2)}`);
         } catch (yahooErr) {
-            console.warn("[환율] Yahoo Finance 실패, open.er-api.com 폴백 시도:", yahooErr);
             rates = null;
         }
 
-        // ── 2차: open.er-api.com 폴백 (하루 1회 갱신) ──
         if (!rates || !rates.KRW) {
             try {
                 const res = await fetch('https://open.er-api.com/v6/latest/USD');
                 if (!res.ok) throw new Error("Fallback API HTTP error");
                 const data = await res.json();
                 rates = data.rates;
-                // open.er-api.com은 previousClose를 제공하지 않으므로 랜덤 시뮬레이션
                 prevCloseRates = {};
                 Object.keys(rates).forEach(k => {
                     const deviation = (Math.random() - 0.5) * 0.003;
                     prevCloseRates[k] = rates[k] / (1 + deviation);
                 });
                 dataSource = 'open.er-api.com (일 1회)';
-                console.log(`[환율] open.er-api.com 폴백 데이터 로드 — USD/KRW: ${rates.KRW}`);
             } catch (fbErr) {
-                console.warn("[환율] 모든 환율 소스 실패:", fbErr);
-                return; // 데이터 없으면 종료
+                return;
             }
         }
 
-        // ── Yahoo 부분 실패 시 누락 통화를 open.er-api.com으로 보충 ──
         const requiredKeys = ['KRW', 'JPY', 'EUR', 'CNY', 'VND', 'THB', 'TWD', 'SGD', 'PHP', 'HKD', 'MYR', 'GBP'];
         const missingKeys = requiredKeys.filter(k => !rates[k]);
         if (missingKeys.length > 0 && dataSource.startsWith('Yahoo')) {
@@ -2510,10 +2678,9 @@ document.addEventListener("DOMContentLoaded", () => {
                         }
                     });
                 }
-            } catch (e) { /* 보충 실패 무시 */ }
+            } catch (e) { }
         }
 
-        // ── 공통 다운스트림: KRW 기준 환율 계산 ──
         try {
             const krwRate = rates.KRW;
             const krwPrevClose = prevCloseRates.KRW || krwRate;
@@ -2530,7 +2697,6 @@ document.addEventListener("DOMContentLoaded", () => {
             const hkdCurrent = (1 / (rates.HKD || 7.81)) * krwRate;
             const myrCurrent = (1 / (rates.MYR || 4.68)) * krwRate;
 
-            // 실제 전일 종가 기반 이전가 계산 (Yahoo 제공 previousClose 활용)
             const usdPrev = krwPrevClose;
             const jpyPrev = (1 / (prevCloseRates.JPY || rates.JPY)) * krwPrevClose * 100;
             const eurPrev = (1 / (prevCloseRates.EUR || rates.EUR)) * krwPrevClose;
@@ -2559,7 +2725,6 @@ document.addEventListener("DOMContentLoaded", () => {
                 eur_travel: { current: eurCurrent, prevClose: eurPrev }
             };
 
-            // USD 기준 데이터 (달러 대비 통화가치 변동률 차트용)
             const eurUsd = 1 / rates.EUR;
             const usdJpy = rates.JPY;
             const gbpUsd = rates.GBP ? 1 / rates.GBP : 1.34;
@@ -2604,7 +2769,6 @@ document.addEventListener("DOMContentLoaded", () => {
             usdExchangeRates.hkd = rates.HKD || 7.81;
             usdExchangeRates.myr = rates.MYR || 4.68;
 
-            // 실제 전일 종가 기반 Daily 비교용 이전 환율 캐시 업데이트
             prevUsdExchangeRates.krw = krwPrevClose;
             prevUsdExchangeRates.jpy = prevCloseRates.JPY || rates.JPY;
             prevUsdExchangeRates.eur = prevCloseRates.EUR || rates.EUR;
@@ -2626,9 +2790,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 eurKrw: eurCurrent,
                 cnyKrw: cnyCurrent
             });
-        } catch (e) {
-            console.warn("[환율] 다운스트림 데이터 처리 중 오류:", e);
-        }
+        } catch (e) { }
     }
 
     async function loadRealFearGreedIndex() {
@@ -2645,11 +2807,11 @@ document.addEventListener("DOMContentLoaded", () => {
             console.warn("Failed to load real Fear & Greed index, fallback to simulation", e);
         }
     }
+    
     function getYahooFinanceUrl(tickerState) {
         let sym = tickerState.symbol;
         if (!sym) return 'https://finance.yahoo.com/';
         
-        // 한국 및 일본 시장 접미사 처리
         if (tickerState.exchange === 'kospi') {
             if (!sym.endsWith('.KS')) sym += '.KS';
         } else if (tickerState.exchange === 'kosdaq') {
@@ -2669,11 +2831,9 @@ document.addEventListener("DOMContentLoaded", () => {
         
         if (currentDollarBasisPeriod === 'ytd') {
             if (key === 'eur') {
-                // EUR/USD는 역수가 아닌 직관적 환율 (1유로당 달러)
                 const eurUsd = 1 / currentRate;
                 return ((eurUsd - yearStartRates.eur) / yearStartRates.eur) * 100;
             } else {
-                // 다른 통화는 1달러당 외화 단위이므로 역산하여 가치 변화율 계산
                 return ((yearStartRates[key] / currentRate) - 1) * 100;
             }
         } else if (currentDollarBasisPeriod === 'daily') {
@@ -2689,9 +2849,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 return ((prevRate / currentRate) - 1) * 100;
             }
         } else {
-            // '1w' or '1m'의 기본 변동 가중치
             const offset = timeframeChangeOffsets[currentDollarBasisPeriod][key] || 0;
-            // 실시간 틱을 반영하기 위해 오늘 하루의 미세 변동률(daily)을 가산해 줌으로써 실시간 그래프 생동감 구현
             let dailyChange = 0;
             let prevRate = prevUsdExchangeRates[key];
             if (key === 'krw') prevRate = prevUsdExchangeRates.krw;
@@ -2802,25 +2960,22 @@ document.addEventListener("DOMContentLoaded", () => {
                     labelLines.forEach((line, i) => {
                         let yPos;
                         if (val < 0) {
-                            // 음수면 막대가 아래로 자라므로 글씨는 baseline 위쪽(양수 영역)에 배치
                             yPos = zeroY - 6 - (N - 1 - i) * lineHeight;
                         } else {
-                            // 양수면 막대가 위로 자라므로 글씨는 baseline 아래쪽(음수 영역)에 배치
                             yPos = zeroY + 10 + i * lineHeight;
                         }
                         
-                        // 색상 처리
                         let lineColor = '#e2e8f0';
                         if (isMobile) {
                             if (i === 0) {
-                                lineColor = '#e2e8f0'; // emoji flag
+                                lineColor = '#e2e8f0';
                             } else {
                                 lineColor = isKorea ? '#ff4b3e' : '#e2e8f0';
                             }
                         } else {
-                            if (i === 1) { // second line: code
+                            if (i === 1) {
                                 lineColor = isKorea ? '#ff8b80' : '#94a3b8';
-                            } else { // first line: flag + name
+                            } else {
                                 lineColor = isKorea ? '#ff4b3e' : '#e2e8f0';
                             }
                         }
@@ -2859,7 +3014,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 datasets: [{
                     data: initialValues,
                     backgroundColor: [
-                        '#ff4b3e', // Korea
+                        '#ff4b3e',
                         '#88c4fc',
                         '#88c4fc',
                         '#88c4fc',
@@ -2904,7 +3059,7 @@ document.addEventListener("DOMContentLoaded", () => {
                             display: false
                         },
                         ticks: {
-                            display: false // 기본 축 텍스트 숨김 (커스텀 플러그인으로 대체)
+                            display: false
                         }
                     },
                     y: {
@@ -2952,7 +3107,6 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     function bindClickVerificationLinks() {
-        // A. 메인페이지 원화 대비 주요 환율 카드 링크 바인딩
         const mainCurrencyLinks = {
             'usd': 'https://www.investing.com/currencies/usd-krw',
             'jpy': 'https://www.investing.com/currencies/jpy-krw',
@@ -2968,7 +3122,6 @@ document.addEventListener("DOMContentLoaded", () => {
             }
         });
 
-        // B. 메인페이지 공포 탐욕 지수 요약 카드 링크 바인딩
         const fgSummaryCard = document.getElementById('card-fear-greed-summary');
         if (fgSummaryCard) {
             fgSummaryCard.addEventListener('click', () => {
@@ -2976,20 +3129,17 @@ document.addEventListener("DOMContentLoaded", () => {
             });
         }
 
-        // C. 여행자 환율 계산기 카드 링크 바인딩 (현재 travelBase에 맞게 동적 링크 분기 처리)
         const travelCardIds = ['usd', 'krw', 'jpy', 'eur', 'cny', 'vnd', 'thb', 'twd', 'sgd'];
         travelCardIds.forEach(id => {
             const card = document.getElementById(`travel-card-${id}`);
             if (card) {
                 card.addEventListener('click', (event) => {
-                    // 입력창이나 스왑 버튼 등의 상호작용 요소 클릭 시에는 페이지 이동 스킵
                     if (event.target.tagName === 'INPUT' || event.target.tagName === 'BUTTON' || event.target.closest('input, button, select, a')) {
                         return;
                     }
                     
                     let url = '';
                     if (travelBase === 'krw') {
-                        // 원화 기준일 때는 원화 대비 환율 사이트 연결
                         if (id === 'usd') url = 'https://www.investing.com/currencies/usd-krw';
                         else if (id === 'jpy') url = 'https://www.investing.com/currencies/jpy-krw';
                         else if (id === 'eur') url = 'https://www.investing.com/currencies/eur-krw';
@@ -2999,7 +3149,6 @@ document.addEventListener("DOMContentLoaded", () => {
                         else if (id === 'twd') url = 'https://www.investing.com/currencies/twd-krw';
                         else if (id === 'sgd') url = 'https://www.investing.com/currencies/sgd-krw';
                     } else {
-                        // 달러 기준일 때는 달러 대비 환율 사이트 연결
                         if (id === 'krw') url = 'https://www.investing.com/currencies/usd-krw';
                         else if (id === 'jpy') url = 'https://www.investing.com/currencies/usd-jpy';
                         else if (id === 'eur') url = 'https://www.investing.com/currencies/eur-usd';
@@ -3017,7 +3166,6 @@ document.addEventListener("DOMContentLoaded", () => {
             }
         });
 
-        // D. 달러 대비 가치 변동률 차트 섹션 전체 클릭 링크 바인딩
         const dollarBasisCard = document.getElementById('dollar-basis-chart-card');
         if (dollarBasisCard) {
             dollarBasisCard.addEventListener('click', () => {
@@ -3025,7 +3173,6 @@ document.addEventListener("DOMContentLoaded", () => {
             });
         }
 
-        // E. 종목 상세분석 헤더 클릭 링크 바인딩 (야후 파이낸스)
         const tickerDetailHeader = document.getElementById('ticker-detail-header');
         if (tickerDetailHeader) {
             tickerDetailHeader.style.cursor = 'pointer';
@@ -3036,19 +3183,17 @@ document.addEventListener("DOMContentLoaded", () => {
             });
         }
 
-        // F. 달러대비 통화가치 변동률 기간 선택 탭 버튼 바인딩
         const basisTabButtons = document.querySelectorAll('.basis-tab-btn');
         const dollarBasisSubtitle = document.querySelector('.dollar-basis-section .status-subtitle');
         basisTabButtons.forEach(btn => {
             btn.addEventListener('click', (event) => {
-                event.stopPropagation(); // 카드 전체 클릭 이동 방지
+                event.stopPropagation();
                 basisTabButtons.forEach(b => b.classList.remove('active'));
                 btn.classList.add('active');
                 
                 const range = btn.getAttribute('data-range');
                 currentDollarBasisPeriod = range;
 
-                // 자막 문구 변경
                 if (dollarBasisSubtitle) {
                     if (range === 'ytd') {
                         dollarBasisSubtitle.innerText = '단위: %, 현지시간 연초(2026년 1월 1일) 대비 현재 실시간 통화가치 변동률';
@@ -3061,18 +3206,591 @@ document.addEventListener("DOMContentLoaded", () => {
                     }
                 }
 
-                // 차트 즉시 갱신
                 updateDollarBasisChart();
             });
         });
     }
 
-    // 12. 전체 대시보드 데이터 초기화 및 루프 실행
-    async function initializeDashboard() {
-        renderRecommendedPortfolioCards(); // 추천 포트폴리오 동적 카드 렌더링
-        initGaugeTicks();
-        await refreshRealData();
 
+
+    function renderDetailChart(data, isBullish, period = '1y') {
+        const ctx = document.getElementById('chart-ticker-detail');
+        if (!ctx) return;
+
+        if (detailChart) {
+            detailChart.destroy();
+        }
+
+        const chartType = currentDetailMode === 'candlestick' ? 'candlestick' : 'line';
+        let datasets = [];
+
+        const isPlaceholder = data.length > 0 && data[0].isPlaceholder;
+
+        if (chartType === 'candlestick') {
+            datasets = [{
+                label: currentTickerState.name || currentTickerState.symbol,
+                data: data.map(d => ({
+                    x: d.x,
+                    o: d.o,
+                    h: d.h,
+                    l: d.l,
+                    c: d.c
+                })),
+                color: {
+                    up: 'rgba(239, 68, 68, 1)',
+                    down: 'rgba(59, 130, 246, 1)',
+                    unchanged: '#94a3b8'
+                }
+            }];
+        } else {
+            datasets = [{
+                label: currentTickerState.name || currentTickerState.symbol,
+                data: data.map(d => ({ x: d.x, y: d.c })),
+                borderColor: isBullish ? '#ef4444' : '#3b82f6',
+                borderWidth: 2,
+                pointRadius: 0,
+                pointHoverRadius: 4,
+                tension: 0.1,
+                fill: {
+                    target: 'origin',
+                    above: isBullish ? 'rgba(239, 68, 68, 0.03)' : 'rgba(59, 130, 246, 0.03)'
+                }
+            }];
+        }
+
+        const range = getPeriodRange(period);
+        
+        const firstPoint = data[0];
+        let listingDate = null;
+        if (firstPoint && !isPlaceholder && firstPoint.x > range.min + 2 * 24 * 60 * 60 * 1000) {
+            listingDate = firstPoint.x;
+        }
+
+        detailChart = new Chart(ctx.getContext('2d'), {
+            type: chartType,
+            data: { datasets: datasets },
+            plugins: [noDataPlaceholderPlugin],
+            options: {
+                animation: false,
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
+                plugins: {
+                    legend: { display: false },
+                    noDataPlaceholder: {
+                        active: isPlaceholder || (listingDate !== null),
+                        listingDate: listingDate,
+                        isPlaceholder: isPlaceholder,
+                        startValue: data.length > 0 ? (data[0].o || data[0].c) : 100
+                    },
+                    tooltip: {
+                        enabled: false,
+                        external: externalTooltipHandler,
+                        backgroundColor: 'rgba(10, 15, 30, 0.9)',
+                        titleColor: '#f8fafc',
+                        bodyColor: '#94a3b8',
+                        borderColor: 'rgba(255, 255, 255, 0.1)',
+                        borderWidth: 1,
+                        padding: 12,
+                        caretSize: 0,
+                        callbacks: {
+                            label: function(context) { 
+                                const val = context.raw.c !== undefined ? context.raw.c : context.parsed.y;
+                                return ` ${context.dataset.label}: ${val.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`; 
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        type: 'time',
+                        min: range.min,
+                        max: range.max,
+                        grid: { color: 'rgba(255, 255, 255, 0.03)' },
+                        ticks: { color: '#64748b', maxTicksLimit: 6, maxRotation: 0 }
+                    },
+                    y: {
+                        type: 'linear',
+                        position: 'right',
+                        grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                        ticks: { color: '#64748b', callback: (v) => v.toLocaleString(undefined, {maximumFractionDigits: 0}) },
+                        grace: '5%'
+                    }
+                }
+            }
+        });
+        adjustChartHeight(detailChart, 320);
+    }
+
+    // --- 추천 포트폴리오 데이터셋 및 인터랙션 기능 구현 ---
+    const recommendedPortfolios = [
+        {
+            id: 'allweather',
+            name: '사계절 안정형 (All Weather)',
+            desc: '레이 달리오의 자산배분 전략을 모방하여, 주식/채권/원자재에 고루 투자해 시장 불황에도 안정적인 수익을 추구합니다.',
+            items: [
+                { symbol: 'VTI', name: 'Vanguard Total Stock Market ETF', weight: 30, exchange: 'nasdaq' },
+                { symbol: 'TLT', name: 'iShares 20+ Year Treasury Bond ETF', weight: 40, exchange: 'nasdaq' },
+                { symbol: 'IEF', name: 'iShares 7-10 Year Treasury Bond ETF', weight: 15, exchange: 'nasdaq' },
+                { symbol: 'GLD', name: 'SPDR Gold Shares', weight: 7.5, exchange: 'nyse' },
+                { symbol: 'DBC', name: 'Invesco DB Commodity Index Tracking', weight: 7.5, exchange: 'nyse' }
+            ]
+        },
+        {
+            id: 'growth',
+            name: 'IT 성장형 (Tech Growth)',
+            desc: '혁신적인 기술 트렌드를 이끄는 미국 대표 빅테크 기업들에 집중적으로 투자하여 장기적으로 높은 자산 상승률을 목표로 합니다.',
+            items: [
+                { symbol: 'AAPL', name: 'Apple Inc.', weight: 30, exchange: 'nasdaq' },
+                { symbol: 'MSFT', name: 'Microsoft Corp.', weight: 30, exchange: 'nasdaq' },
+                { symbol: 'NVDA', name: 'NVIDIA Corp.', weight: 20, exchange: 'nasdaq' },
+                { symbol: 'TSLA', name: 'Tesla Inc.', weight: 20, exchange: 'nasdaq' }
+            ]
+        },
+        {
+            id: 'stable',
+            name: '현금 배당형 (Balanced Income)',
+            desc: '시장 지수 추종 ETF와 안정적인 중기 채권에 자산을 균형 있게 나누어 배당 수익과 안정적인 자산 방어를 동시에 달성합니다.',
+            items: [
+                { symbol: 'SPY', name: 'SPDR S&P 500 ETF Trust', weight: 50, exchange: 'nyse' },
+                { symbol: 'IEI', name: 'iShares 3-7 Year Treasury Bond ETF', weight: 30, exchange: 'nasdaq' },
+                { symbol: 'SHY', name: 'iShares 1-3 Year Treasury Bond ETF', weight: 20, exchange: 'nasdaq' }
+            ]
+        },
+        {
+            id: 'stock80bond20',
+            name: '주식 80% / 채권 20% (Stock 80% / Bond 20%)',
+            desc: '미국 전체 주식 시장에 80%, 채권 시장에 20%를 투자하는 자산 배분의 기본이자 정석적인 포트폴리오입니다.',
+            items: [
+                { symbol: 'VTI', name: 'Vanguard Total Stock Market ETF', weight: 80, exchange: 'nasdaq' },
+                { symbol: 'BND', name: 'Vanguard Total Bond Market ETF', weight: 20, exchange: 'nasdaq' }
+            ]
+        },
+        {
+            id: 'momentum6040',
+            name: '모멘텀 60 / 40 (Momentum 60/40)',
+            desc: '시장 주도 모멘텀 주식 60%와 종합 채권 40%로 구성하여 적극적인 수익과 안정성을 결합한 전략입니다.',
+            items: [
+                { symbol: 'MTUM', name: 'iShares MSCI USA Momentum Factor ETF', weight: 60, exchange: 'nyse' },
+                { symbol: 'BND', name: 'Vanguard Total Bond Market ETF', weight: 40, exchange: 'nasdaq' }
+            ]
+        },
+        {
+            id: 'goldenbutterfly',
+            name: '골든 버터플라이 (Golden Butterfly)',
+            desc: '주식, 소형 가치주, 단기 채권, 장기 채권, 금에 각각 20%씩 균등 투자하여 어떤 거시경제 환경에서도 손실을 최소화하는 전략입니다.',
+            items: [
+                { symbol: 'IJS', name: 'iShares S&P Small-Cap 600 Value ETF', weight: 20, exchange: 'nyse' },
+                { symbol: 'VTI', name: 'Vanguard Total Stock Market ETF', weight: 20, exchange: 'nasdaq' },
+                { symbol: 'SHY', name: 'iShares 1-3 Year Treasury Bond ETF', weight: 20, exchange: 'nasdaq' },
+                { symbol: 'TLT', name: 'iShares 20+ Year Treasury Bond ETF', weight: 20, exchange: 'nasdaq' },
+                { symbol: 'GLD', name: 'SPDR Gold Shares', weight: 20, exchange: 'nyse' }
+            ]
+        }
+    ];
+
+    let selectedRecPortfolio = recommendedPortfolios[0];
+    let recPieChart = null;
+    let compMyPieChart = null;
+    let compRecPieChart = null;
+    let weightStartChart = null;
+    let weightCurrentChart = null;
+    let selectedAnalysisTarget = 'my'; // 'my' 또는 'rec'
+
+    // 추천 포트폴리오 카드 렌더링
+    function renderRecommendedPortfolioCards() {
+        const grid = document.querySelector('.recommended-grid');
+        if (!grid) return;
+
+        grid.innerHTML = recommendedPortfolios.map(portfolio => {
+            const isActive = portfolio.id === selectedRecPortfolio.id ? 'active' : '';
+            return `
+                <div class="portfolio-select-icon-card ${isActive}" onclick="window.selectRecPortfolio('${portfolio.id}')" style="padding: 16px; cursor: pointer; border: 1px solid rgba(255,255,255,0.07); border-radius: 12px; display: flex; flex-direction: column; gap: 8px; background: rgba(255,255,255,0.02); transition: all 0.3s ease;">
+                    <div style="font-size: 24px;">💡</div>
+                    <div style="font-weight: 700; color: #fff; font-size: 14px;">${portfolio.name}</div>
+                    <div style="font-size: 11px; color: var(--text-muted); line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">${portfolio.desc}</div>
+                </div>
+            `;
+        }).join('');
+
+        renderSelectedRecPortfolioDetails();
+    }
+
+    // 선택한 추천 포트폴리오의 상세 정보와 파이 차트 업데이트
+    function renderSelectedRecPortfolioDetails() {
+        const titleEl = document.getElementById('selected-rec-title');
+        const descEl = document.querySelector('#detail-subview-recommended p');
+        const listEl = document.getElementById('rec-allocation-list');
+        
+        if (titleEl) titleEl.innerText = selectedRecPortfolio.name;
+        if (descEl) descEl.innerText = selectedRecPortfolio.desc;
+
+        if (listEl) {
+            listEl.innerHTML = selectedRecPortfolio.items.map(item => `
+                <div style="display: flex; justify-content: space-between; font-size: 13px; color: #cbd5e1; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.03);">
+                    <span>${item.name} (${item.symbol})</span>
+                    <span style="font-weight: 700; color: var(--accent);">${item.weight}%</span>
+                </div>
+            `).join('');
+        }
+
+        renderRecPieChart();
+    }
+
+    // 추천 포트폴리오 파이 차트
+    function renderRecPieChart() {
+        const canvas = document.getElementById('chart-rec-pie');
+        if (!canvas) return;
+
+        if (recPieChart) {
+            recPieChart.destroy();
+        }
+
+        const labels = selectedRecPortfolio.items.map(item => item.symbol);
+        const data = selectedRecPortfolio.items.map(item => item.weight);
+        const colors = ['#ff4b60', '#ff8838', '#ffc72c', '#00e676', '#00b0ff', '#3d5afe', '#d500f9', '#ff4081', '#00f2fe', '#4facfe'];
+
+        recPieChart = new Chart(canvas.getContext('2d'), {
+            type: 'pie',
+            data: {
+                labels: labels,
+                datasets: [{
+                    data: data,
+                    backgroundColor: colors.slice(0, labels.length),
+                    borderWidth: 0
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'right',
+                        labels: { color: '#cbd5e1', font: { size: 11 } }
+                    }
+                }
+            }
+        });
+    }
+
+    // 추천 포트폴리오 선택 이벤트 (전역 바인딩)
+    window.selectRecPortfolio = function(id) {
+        const found = recommendedPortfolios.find(p => p.id === id);
+        if (found) {
+            selectedRecPortfolio = found;
+            renderRecommendedPortfolioCards();
+            
+            // 포트폴리오 분석 타겟이 'rec'일 때, 차트와 파이 차트도 동시 갱신
+            if (selectedAnalysisTarget === 'rec') {
+                renderPortfolioWeightCharts();
+            }
+        }
+    };
+
+    // 추천 포트폴리오 복제 기능
+    window.confirmCopyRecommendedPortfolio = function() {
+        const modal = document.getElementById('portfolio-copy-confirm-modal');
+        const msgEl = document.getElementById('copy-confirm-message');
+        if (msgEl) {
+            msgEl.innerHTML = `"${selectedRecPortfolio.name}" 구성을 복사하여 내 포트폴리오로 복제하시겠습니까?<br><br>복사 시 기존 내 포트폴리오 데이터는 <strong>모두 대체</strong>되며, 총 <strong>1,000만 원 기준</strong>으로 자산별 수량이 자동 계산되어 입력됩니다.`;
+        }
+        if (modal) {
+            modal.classList.add('active');
+        }
+
+        const yesBtn = document.getElementById('btn-copy-confirm-yes');
+        if (yesBtn) {
+            yesBtn.onclick = async () => {
+                window.closeCopyConfirmModal();
+                
+                // 가격 정보를 불러와 1000만원 비중 대비 수량(quantity) 계산
+                try {
+                    const pricePromises = selectedRecPortfolio.items.map(item => getStockCurrentPriceAndCurrency(item.symbol, item.exchange));
+                    const priceResults = await Promise.all(pricePromises);
+
+                    portfolio = selectedRecPortfolio.items.map((item, index) => {
+                        const { price, currency } = priceResults[index];
+                        const krwRate = getKrwExchangeRate(currency);
+                        const priceKrw = price * krwRate;
+                        
+                        const targetKrwVal = 10000000 * (item.weight / 100);
+                        let quantity = priceKrw > 0 ? Math.round(targetKrwVal / priceKrw) : 1;
+                        if (quantity <= 0) quantity = 1;
+                        
+                        return {
+                            symbol: item.symbol,
+                            name: item.name,
+                            weight: item.weight,
+                            exchange: item.exchange,
+                            quantity: quantity
+                        };
+                    });
+
+                    savePortfolio();
+                    
+                    if (typeof renderPortfolioModal === 'function') {
+                        await renderPortfolioModal();
+                    }
+                    
+                    window.selectAnalysisTarget('my');
+                    window.switchSubTab('analysis');
+                    
+                    setTimeout(() => {
+                        showToast('추천 포트폴리오가 내 포트폴리오로 복사되었습니다!', 'success');
+                    }, 100);
+                    
+                    if (typeof triggerGoogleDriveSync === 'function') {
+                        triggerGoogleDriveSync();
+                    }
+                } catch (err) {
+                    console.error("Failed to copy recommended portfolio:", err);
+                    showToast("추천 포트폴리오 복사 중 오류가 발생했습니다.", "error");
+                }
+                    
+
+            };
+        }
+    };
+
+    window.closeCopyConfirmModal = function() {
+        const modal = document.getElementById('portfolio-copy-confirm-modal');
+        if (modal) modal.classList.remove('active');
+    };
+
+    // 포트폴리오 분석 탭 타겟 전환
+    window.selectAnalysisTarget = async function(target) {
+        selectedAnalysisTarget = target;
+        
+        const btnMy = document.getElementById('btn-select-my-portfolio');
+        const btnRec = document.getElementById('btn-select-rec-portfolio');
+        
+        if (target === 'my') {
+            if (btnMy) btnMy.classList.add('active');
+            if (btnRec) btnRec.classList.remove('active');
+        } else {
+            if (btnMy) btnMy.classList.remove('active');
+            if (btnRec) btnRec.classList.add('active');
+        }
+
+        // 비중 차트 및 성과 시계열 차트 갱신
+        if (typeof runPortfolioAnalysis === 'function') {
+            await runPortfolioAnalysis();
+        } else if (typeof renderAnalysisChartOnly === 'function') {
+            renderAnalysisChartOnly();
+        }
+        renderPortfolioWeightCharts();
+    };
+
+    // 포트폴리오 시작/현재 비중 파이 차트 렌더러
+    function renderPortfolioWeightCharts() {
+        const startCanvas = document.getElementById('chart-weight-start');
+        const currentCanvas = document.getElementById('chart-weight-current');
+        const colors = ['#ff4b60', '#ff8838', '#ffc72c', '#00e676', '#00b0ff', '#3d5afe', '#d500f9', '#ff4081', '#00f2fe', '#4facfe'];
+
+        const targetData = selectedAnalysisTarget === 'my' ? portfolio : selectedRecPortfolio.items;
+
+        if (targetData.length === 0) {
+            // 빈 상태 처리
+            if (startCanvas) {
+                const ctx = startCanvas.getContext('2d');
+                ctx.clearRect(0, 0, startCanvas.width, startCanvas.height);
+            }
+            if (currentCanvas) {
+                const ctx = currentCanvas.getContext('2d');
+                ctx.clearRect(0, 0, currentCanvas.width, currentCanvas.height);
+            }
+            return;
+        }
+
+        const labels = targetData.map(item => item.symbol);
+        const data = targetData.map(item => item.weight);
+
+        if (startCanvas) {
+            if (weightStartChart) weightStartChart.destroy();
+            weightStartChart = new Chart(startCanvas.getContext('2d'), {
+                type: 'pie',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        data: data,
+                        backgroundColor: colors.slice(0, labels.length),
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'right',
+                            labels: { color: '#cbd5e1', font: { size: 10 } }
+                        }
+                    }
+                }
+            });
+        }
+
+        if (currentCanvas) {
+            if (weightCurrentChart) weightCurrentChart.destroy();
+            weightCurrentChart = new Chart(currentCanvas.getContext('2d'), {
+                type: 'pie',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        data: data,
+                        backgroundColor: colors.slice(0, labels.length),
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'right',
+                            labels: { color: '#cbd5e1', font: { size: 10 } }
+                        }
+                    }
+                }
+            });
+        }
+    }
+
+    // 비교 분석 섹션 토글 및 차트 렌더링
+    window.togglePortfolioComparison = async function() {
+        const comparisonSection = document.getElementById('comparison-results-panel');
+        if (!comparisonSection) return;
+
+        const isHidden = comparisonSection.style.display === 'none' || comparisonSection.style.display === '';
+        comparisonSection.style.display = isHidden ? 'block' : 'none';
+        
+        if (isHidden) {
+            await runPortfolioComparisonAnalysis();
+        }
+    };
+
+    // 비교 분석 백테스팅 및 UI 업데이트
+    async function runPortfolioComparisonAnalysis() {
+        // 내 포트폴리오
+        const myMetrics = await calculatePortfolioMetrics(portfolio);
+        // 추천 포트폴리오
+        const recMetrics = await calculatePortfolioMetrics(selectedRecPortfolio.items);
+
+        // UI 업데이트: 내 포트폴리오
+        if (myMetrics) {
+            document.getElementById('comp-my-return').innerText = `${myMetrics.totalReturn >= 0 ? '+' : ''}${myMetrics.totalReturn.toFixed(1)}%`;
+            document.getElementById('comp-my-return').style.color = myMetrics.totalReturn >= 0 ? 'var(--bullish)' : 'var(--bearish)';
+            
+            if (myMetrics.years >= 0.95) {
+                document.getElementById('comp-my-cagr').innerText = `${myMetrics.cagr >= 0 ? '+' : ''}${myMetrics.cagr.toFixed(1)}%`;
+                document.getElementById('comp-my-cagr').style.color = myMetrics.cagr >= 0 ? 'var(--bullish)' : 'var(--bearish)';
+            } else {
+                document.getElementById('comp-my-cagr').innerText = `N/A (1년 미만)`;
+                document.getElementById('comp-my-cagr').style.color = 'var(--text-muted)';
+            }
+
+            document.getElementById('comp-my-mdd').innerText = `-${myMetrics.mdd.toFixed(1)}%`;
+            document.getElementById('comp-my-mdd').style.color = 'var(--bearish)';
+
+            const myExDetail = document.getElementById('comp-my-exchange-detail');
+            if (myExDetail) {
+                myExDetail.innerHTML = renderExchangeDetailHtml(myMetrics);
+            }
+        } else {
+            document.getElementById('comp-my-return').innerText = '--';
+            document.getElementById('comp-my-cagr').innerText = '--';
+            document.getElementById('comp-my-mdd').innerText = '--';
+            const myExDetail = document.getElementById('comp-my-exchange-detail');
+            if (myExDetail) myExDetail.innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 8px 0;">내 포트폴리오에 등록된 종목이 없습니다.</div>';
+        }
+
+        // UI 업데이트: 추천 포트폴리오
+        if (recMetrics) {
+            document.getElementById('comp-rec-return').innerText = `${recMetrics.totalReturn >= 0 ? '+' : ''}${recMetrics.totalReturn.toFixed(1)}%`;
+            document.getElementById('comp-rec-return').style.color = recMetrics.totalReturn >= 0 ? 'var(--bullish)' : 'var(--bearish)';
+            
+            if (recMetrics.years >= 0.95) {
+                document.getElementById('comp-rec-cagr').innerText = `${recMetrics.cagr >= 0 ? '+' : ''}${recMetrics.cagr.toFixed(1)}%`;
+                document.getElementById('comp-rec-cagr').style.color = recMetrics.cagr >= 0 ? 'var(--bullish)' : 'var(--bearish)';
+            } else {
+                document.getElementById('comp-rec-cagr').innerText = `N/A (1년 미만)`;
+                document.getElementById('comp-rec-cagr').style.color = 'var(--text-muted)';
+            }
+
+            document.getElementById('comp-rec-mdd').innerText = `-${recMetrics.mdd.toFixed(1)}%`;
+            document.getElementById('comp-rec-mdd').style.color = 'var(--bearish)';
+
+            const recExDetail = document.getElementById('comp-rec-exchange-detail');
+            if (recExDetail) {
+                recExDetail.innerHTML = renderExchangeDetailHtml(recMetrics);
+            }
+        }
+
+        // 파이 차트 렌더링
+        renderComparisonCharts();
+    }
+
+    // 포트폴리오 비교 분석 파이 차트 렌더러
+    function renderComparisonCharts() {
+        const myCanvas = document.getElementById('chart-comp-my-pie');
+        const recCanvas = document.getElementById('chart-comp-rec-pie');
+        const colors = ['#ff4b60', '#ff8838', '#ffc72c', '#00e676', '#00b0ff', '#3d5afe', '#d500f9', '#ff4081', '#00f2fe', '#4facfe'];
+
+        if (myCanvas) {
+            if (compMyPieChart) compMyPieChart.destroy();
+            
+            const labels = portfolio.map(item => item.symbol);
+            const data = portfolio.map(item => item.weight);
+            
+            compMyPieChart = new Chart(myCanvas.getContext('2d'), {
+                type: 'pie',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        data: data,
+                        backgroundColor: colors.slice(0, labels.length),
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } }
+                }
+            });
+        }
+
+        if (recCanvas) {
+            if (compRecPieChart) compRecPieChart.destroy();
+            
+            const labels = selectedRecPortfolio.items.map(item => item.symbol);
+            const data = selectedRecPortfolio.items.map(item => item.weight);
+            
+            compRecPieChart = new Chart(recCanvas.getContext('2d'), {
+                type: 'pie',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        data: data,
+                        backgroundColor: colors.slice(0, labels.length),
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } }
+                }
+            });
+        }
+    }
+
+    async function initializeDashboard() {
+        renderRecommendedPortfolioCards();
+        initGaugeTicks();
+        initPortfolioModalControls();
+
+        // 1. 차트와 초기 UI를 먼저 즉시 로드 (사용자 대기 차단 방지)
         initMarketSummaryChart();
         initHistoricalChart();
         initDollarBasisChart();
@@ -3084,24 +3802,96 @@ document.addEventListener("DOMContentLoaded", () => {
         });
         calculateTravelExchange('krw');
 
-        // 시장 심리 코멘터리 아코디언 토글 이벤트 바인딩
         document.querySelectorAll('.insight-item').forEach(item => {
             item.addEventListener('click', () => {
                 item.classList.toggle('active');
             });
         });
 
-        // 종목 분석 탭의 기본 서브 탭을 '주식검색'으로 활성화
         if (typeof window.switchSubTab === 'function') {
             window.switchSubTab('search');
         }
+
+        // 2. 실시간 웹 API 연동은 백그라운드 비동기로 점진적 갱신
+        refreshRealData();
     }
 
-    // 13. 네이버 금융 메인 뉴스 크롤링 시스템 (EUC-KR 인코딩 처리)
-    // 전역 변수로 현재 선택된 뉴스 탭 상태와 불러온 뉴스 리스트 저장
+    function initTimeframeButtons() {
+        const summaryModeBtns = document.querySelectorAll('#summary-mode-toggle .mode-btn');
+        summaryModeBtns.forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                summaryModeBtns.forEach(b => b.classList.remove('active'));
+                e.target.classList.add('active');
+                currentSummaryMode = e.target.getAttribute('data-mode');
+                initMarketSummaryChart(currentSummaryPeriod, true);
+            });
+        });
+        
+        const summaryBtns = document.querySelectorAll('#summary-timeframe-buttons .time-btn');
+        summaryBtns.forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                summaryBtns.forEach(b => b.classList.remove('active'));
+                e.target.classList.add('active');
+                currentSummaryPeriod = e.target.getAttribute('data-period');
+                initMarketSummaryChart(currentSummaryPeriod, false);
+            });
+        });
+
+        const detailModeBtns = document.querySelectorAll('#detail-mode-toggle .mode-btn');
+        detailModeBtns.forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                if (!currentTickerState.symbol) return;
+                detailModeBtns.forEach(b => b.classList.remove('active'));
+                e.target.classList.add('active');
+                currentDetailMode = e.target.getAttribute('data-mode');
+                loadTickerDetail(currentTickerState.symbol, currentTickerState.name, currentTickerState.exchange, currentDetailPeriod, true);
+            });
+        });
+
+        const detailBtns = document.querySelectorAll('#detail-timeframe-buttons .time-btn');
+        detailBtns.forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                if (!currentTickerState.symbol) return;
+                detailBtns.forEach(b => b.classList.remove('active'));
+                e.target.classList.add('active');
+                const p = e.target.getAttribute('data-period');
+                loadTickerDetail(currentTickerState.symbol, currentTickerState.name, currentTickerState.exchange, p, false);
+            });
+        });
+
+        const prevBtn = document.getElementById('summary-slide-prev');
+        const nextBtn = document.getElementById('summary-slide-next');
+        const titleEl = document.getElementById('market-slide-title');
+
+        function animateChart(direction) {
+            const container = document.querySelector('.market-summary-box');
+            if(container) {
+                container.classList.remove('slide-anim-left', 'slide-anim-right');
+                void container.offsetWidth;
+                container.classList.add(direction === 'left' ? 'slide-anim-left' : 'slide-anim-right');
+            }
+        }
+
+        if (prevBtn) {
+            prevBtn.addEventListener('click', () => {
+                currentSummarySlideIndex = (currentSummarySlideIndex - 1 + marketSlides.length) % marketSlides.length;
+                if(titleEl) titleEl.innerText = marketSlides[currentSummarySlideIndex].title;
+                animateChart('left');
+                initMarketSummaryChart('3mo', false);
+            });
+        }
+        if (nextBtn) {
+            nextBtn.addEventListener('click', () => {
+                currentSummarySlideIndex = (currentSummarySlideIndex + 1) % marketSlides.length;
+                if(titleEl) titleEl.innerText = marketSlides[currentSummarySlideIndex].title;
+                animateChart('right');
+                initMarketSummaryChart('3mo', false);
+            });
+        }
+    }
+
     let loadedNewsList = [];
 
-    // 14. 실시간 주식 티커 검색 기능 (모의 데이터 연동)
     const tickerMockData = {
         nasdaq: [
             { symbol: 'AAPL', name: 'Apple Inc.' },
@@ -3112,7 +3902,8 @@ document.addEventListener("DOMContentLoaded", () => {
             { symbol: 'AMZN', name: 'Amazon.com Inc.' },
             { symbol: 'PLTR', name: 'Palantir Technologies Inc.' },
             { symbol: 'META', name: 'Meta Platforms, Inc.' },
-            { symbol: 'NFLX', name: 'Netflix, Inc.' }
+            { symbol: 'NFLX', name: 'Netflix, Inc.' },
+            { symbol: 'SPCX', name: 'Mock Stock SPCX', listingDate: '2025-12-01' }
         ],
         nyse: [
             { symbol: 'PLTR', name: 'Palantir Technologies Inc.' },
@@ -3181,7 +3972,7 @@ document.addEventListener("DOMContentLoaded", () => {
             }
             autocompleteHideTimer = setTimeout(() => {
                 dropdown.style.display = 'none';
-            }, 30000); // 30 seconds
+            }, 30000);
         }
 
         dropdownBtn.addEventListener('click', (e) => {
@@ -3210,52 +4001,31 @@ document.addEventListener("DOMContentLoaded", () => {
 
         function detectExchange(symbol, apiExchange) {
             const symUpper = symbol.toUpperCase();
-            
-            // 1. Check if it's in our local mock data first
             for (const [ex, list] of Object.entries(tickerMockData)) {
                 if (list.some(item => item.symbol.toUpperCase() === symUpper)) {
                     return ex;
                 }
             }
-            
-            // 2. Check suffix
             if (symUpper.endsWith('.KS')) return 'kospi';
             if (symUpper.endsWith('.KQ')) return 'kosdaq';
             if (symUpper.endsWith('.T')) return 'japan';
-            
-            // 3. Check Yahoo Finance API exchange field
             if (apiExchange) {
                 const exUpper = apiExchange.toUpperCase();
-                if (exUpper.includes('NMS') || exUpper.includes('NAS') || exUpper.includes('NASDAQ')) {
-                    return 'nasdaq';
-                }
-                if (exUpper.includes('NYQ') || exUpper.includes('NYS') || exUpper.includes('NYSE') || exUpper.includes('ASE')) {
-                    return 'nyse';
-                }
-                if (exUpper.includes('TSE') || exUpper.includes('TYO') || exUpper.includes('JPX')) {
-                    return 'japan';
-                }
-                if (exUpper.includes('KSC') || exUpper.includes('KSE')) {
-                    return 'kospi';
-                }
-                if (exUpper.includes('KOE') || exUpper.includes('KSD') || exUpper.includes('KOSDAQ')) {
-                    return 'kosdaq';
-                }
+                if (exUpper.includes('NMS') || exUpper.includes('NAS') || exUpper.includes('NASDAQ')) return 'nasdaq';
+                if (exUpper.includes('NYQ') || exUpper.includes('NYS') || exUpper.includes('NYSE') || exUpper.includes('ASE')) return 'nyse';
+                if (exUpper.includes('TSE') || exUpper.includes('TYO') || exUpper.includes('JPX')) return 'japan';
+                if (exUpper.includes('KSC') || exUpper.includes('KSE')) return 'kospi';
+                if (exUpper.includes('KOE') || exUpper.includes('KSD') || exUpper.includes('KOSDAQ')) return 'kosdaq';
             }
-            
-            // 4. Format-based fallback instead of defaulting to 'nasdaq'
             if (/^\d{6}$/.test(symUpper)) {
                 if (currentExchange === 'kosdaq') return 'kosdaq';
                 return 'kospi';
             }
-            if (/^\d{4}$/.test(symUpper)) {
-                return 'japan';
-            }
+            if (/^\d{4}$/.test(symUpper)) return 'japan';
             if (/^[A-Z.\-_]+$/.test(symUpper)) {
                 if (currentExchange === 'nyse') return 'nyse';
                 return 'nasdaq';
             }
-            
             return 'unknown';
         }
 
@@ -3263,7 +4033,6 @@ document.addEventListener("DOMContentLoaded", () => {
             const query = input.value.trim();
             if (query.length === 0) return;
 
-            // 현재 선택된 거래소의 로컬 종목 데이터만 검색 대상으로 설정
             const allLocalData = [];
             const localList = tickerMockData[currentExchange] || [];
             localList.forEach(item => {
@@ -3295,7 +4064,6 @@ document.addEventListener("DOMContentLoaded", () => {
                 input.value = found.symbol;
                 hideAutocompleteDropdown();
                 
-                // Update exchange dropdown UI
                 const targetOption = document.querySelector(`.exchange-option[data-exchange="${found.exchange}"]`);
                 if (targetOption) {
                     currentExchange = found.exchange;
@@ -3306,8 +4074,6 @@ document.addEventListener("DOMContentLoaded", () => {
                 const isPossibleSymbol = /^[a-zA-Z0-9.\-_^]+$/.test(query);
                 if (isPossibleSymbol) {
                     const symbolUpper = query.toUpperCase();
-                    
-                    // 입력된 티커가 현재 선택된 거래소의 형식 규격에 부합하는지 엄격히 확인
                     let isValidForExchange = false;
                     let detectedEx = currentExchange;
 
@@ -3321,21 +4087,17 @@ document.addEventListener("DOMContentLoaded", () => {
                         detectedEx = 'kosdaq';
                         isValidForExchange = (currentExchange === 'kosdaq');
                     } else {
-                        // 접미사가 없는 경우
                         if (/^\d{6}$/.test(symbolUpper)) {
-                            // 6자리 숫자는 KOSPI 또는 KOSDAQ
                             if (currentExchange === 'kospi' || currentExchange === 'kosdaq') {
                                 isValidForExchange = true;
                                 detectedEx = currentExchange;
                             }
                         } else if (/^\d{4}$/.test(symbolUpper)) {
-                            // 4자리 숫자는 일본
                             if (currentExchange === 'japan') {
                                 isValidForExchange = true;
                                 detectedEx = 'japan';
                             }
                         } else if (/^[A-Z.\-_]+$/.test(symbolUpper)) {
-                            // 영문 티커는 미국 거래소(NASDAQ 또는 NYSE)
                             if (currentExchange === 'nasdaq' || currentExchange === 'nyse') {
                                 isValidForExchange = true;
                                 detectedEx = currentExchange;
@@ -3379,7 +4141,6 @@ document.addEventListener("DOMContentLoaded", () => {
         let currentFilteredList = [];
         let autocompleteTimeout = null;
 
-        // Helper to extract English name from parenthesized string (e.g. "도요타 (Toyota)" -> "Toyota")
         const getEnglishName = (name) => {
             const match = name.match(/\(([^)]+)\)/);
             return match ? match[1].trim() : name;
@@ -3421,7 +4182,6 @@ document.addEventListener("DOMContentLoaded", () => {
                     li.addEventListener('click', () => {
                         input.value = item.symbol;
                         hideAutocompleteDropdown();
-                        // Switch exchange dropdown UI automatically
                         const targetOption = document.querySelector(`.exchange-option[data-exchange="${item.exchange}"]`);
                         if (targetOption) {
                             currentExchange = item.exchange;
@@ -3473,7 +4233,6 @@ document.addEventListener("DOMContentLoaded", () => {
             }
             resetAutocompleteHideTimer();
 
-            // 현재 선택된 거래소의 로컬 종목 데이터만 필터링 대상으로 설정
             const allLocalData = [];
             const localList = tickerMockData[currentExchange] || [];
             localList.forEach(item => {
@@ -3515,7 +4274,6 @@ document.addEventListener("DOMContentLoaded", () => {
             currentFilteredList = filtered;
             renderDropdownList(filtered);
 
-            // Debounce and fetch real-time suggestions from Yahoo Finance via CORS proxy
             clearTimeout(autocompleteTimeout);
             autocompleteTimeout = setTimeout(async () => {
                 if (query.length < 1) return;
@@ -3529,7 +4287,6 @@ document.addEventListener("DOMContentLoaded", () => {
                     if (!seenSymbols.has(symLower)) {
                         const detectedEx = detectExchange(item.symbol, item.apiExchange);
                         
-                        // 현재 선택된 거래소와 다른 거래소의 추천 종목은 배제
                         if (detectedEx !== currentExchange) return;
                         
                         seenSymbols.add(symLower);
@@ -3581,7 +4338,6 @@ document.addEventListener("DOMContentLoaded", () => {
                     }
                     loadTickerDetail(selectedItem.symbol, selectedItem.name, selectedItem.exchange);
                 } else if (currentFilteredList.length > 0) {
-                    // Default to the first recommended item if user just presses Enter
                     const selectedItem = currentFilteredList[0];
                     input.value = selectedItem.symbol;
                     dropdown.style.display = 'none';
@@ -3621,14 +4377,12 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
-    // 15. 티커 상세 정보 로드 함수
     let currentTickerState = { symbol: '', name: '', exchange: '' };
     let currentDetailPeriod = '5y';
     let currentDetailMode = 'line';
     let currentDetailData = null;
     let averageFetchTimeMs = 1500;
 
-    // 주요 종목 3개년 실제 기반 재무 실적 및 배당 정보 mock 데이터셋
     const mockFinancialData = {
         'AAPL': {
             financials: [
@@ -3680,15 +4434,12 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     };
 
-    // 모의 재무 및 배당 데이터 생성 함수 (딕셔너리에 없을 시의 동적 생성)
     function getMockFinancialsAndDividends(symbol, currentPrice, currency) {
         const symUpper = symbol.toUpperCase();
         if (mockFinancialData[symUpper]) {
-            // 원 데이터 단위 유지
             return mockFinancialData[symUpper];
         }
         
-        // 해당 주가를 활용해 역산하여 그럴싸한 실적과 배당지표 생성
         const financials = [];
         let baseRev = currentPrice * (currency === 'KRW' || currency === 'JPY' ? 5000 : 5000000);
         for (let year = 2025; year >= 2023; year--) {
@@ -3698,7 +4449,7 @@ document.addEventListener("DOMContentLoaded", () => {
             
             financials.push({
                 endDate: `${year}-12-31`,
-                totalRevenue: baseRev / 1000, // 천단위 변환
+                totalRevenue: baseRev / 1000,
                 operatingIncome: opInc / 1000,
                 netIncome: netInc / 1000
             });
@@ -3723,7 +4474,6 @@ document.addEventListener("DOMContentLoaded", () => {
         };
     }
 
-    // 재무제표 및 배당 정보 렌더링 함수
     function renderFinancialsAndDividends(symbol, name, incHistory, dividendData, currency) {
         const finContainer = document.getElementById('financial-statements-container');
         const finWrapper = document.getElementById('financial-table-wrapper');
@@ -3731,7 +4481,6 @@ document.addEventListener("DOMContentLoaded", () => {
         
         if (!finContainer) return;
         
-        // A. 재무제표 렌더링
         if (finWrapper && incHistory && incHistory.length > 0) {
             let tableHTML = `<table class="financial-table">
                 <thead>
@@ -3764,7 +4513,6 @@ document.addEventListener("DOMContentLoaded", () => {
             finWrapper.innerHTML = '<div style="color: var(--text-muted); text-align: center; padding: 20px;">재무 실적 데이터가 준비되지 않았습니다.</div>';
         }
 
-        // B. 배당 정보 렌더링 (그리드 카드 스타일)
         if (divWrapper && dividendData) {
             const hasDiv = dividendData.yield !== 'N/A' && parseFloat(dividendData.yield) > 0;
             const yieldVal = hasDiv ? formatNumber(parseFloat(dividendData.yield), 2) + '%' : 'N/A (무배당)';
@@ -3852,11 +4600,9 @@ document.addEventListener("DOMContentLoaded", () => {
         const p52l = document.getElementById('panel-52low');
         if (p52l) p52l.innerText = formatNumber(currentPrice * (1 - Math.random() * 0.3), 2);
         
-        // 모의 재무 및 배당 데이터 렌더링 호출
         const mockSymbol = currentTickerState.symbol || 'MOCK';
         const mockData = getMockFinancialsAndDividends(mockSymbol, currentPrice, currency);
         
-        // 005930, 000660 등 로컬 원화 수치에 상응하도록 단위 조정 (천단위)
         let formattedMockFin = mockData.financials.map(f => ({
             endDate: f.endDate,
             totalRevenue: f.totalRevenue,
@@ -3864,7 +4610,6 @@ document.addEventListener("DOMContentLoaded", () => {
             netIncome: f.netIncome
         }));
 
-        const isLocalCurrency = currency === 'KRW' || currency === 'JPY';
         const formattedMockDiv = {
             yield: mockData.dividend.yield || simulatedDivRate,
             dps: mockData.dividend.dps || (currentPrice * (simulatedDivRate / 100)),
@@ -3876,7 +4621,6 @@ document.addEventListener("DOMContentLoaded", () => {
         renderFinancialsAndDividends(mockSymbol, currentTickerState.name, formattedMockFin, formattedMockDiv, currency);
     }
 
-    // 종목에 알맞는 관련 뉴스 3가지 생성 및 렌더러
     function renderRelatedNews(symbol, name) {
         const detailNewsContainer = document.getElementById('detail-news-container');
         const detailNewsList = document.getElementById('detail-news-list');
@@ -3940,867 +4684,145 @@ document.addEventListener("DOMContentLoaded", () => {
         detailNewsContainer.style.display = 'block';
     }
 
-    async function loadTickerDetail(symbol, name, exchange, period = currentDetailPeriod, useCached = false) {
-        currentTickerState = { symbol, name, exchange };
-        currentDetailPeriod = period;
-        
-        window.switchTab('detail');
-        
-        const titleEl = document.getElementById('detail-title');
-        const exchangeBadge = document.getElementById('detail-exchange');
-        const priceBox = document.getElementById('detail-price-box');
-        const loadingIndicator = document.getElementById('detail-loading-overlay');
-        const chartWrapper = document.getElementById('detail-chart-wrapper');
-        const priceEl = document.getElementById('detail-price');
-        const changeEl = document.getElementById('detail-change');
-
-        titleEl.innerText = `${name} (${symbol})`;
-        exchangeBadge.innerText = exchange.toUpperCase();
-        
-        // Show Add to Portfolio button when stock is loaded
-        const addBtn = document.getElementById('add-to-portfolio-btn');
-        if (addBtn) {
-            addBtn.style.display = 'inline-flex';
-            addBtn.onclick = () => {
-                addToPortfolio(symbol, name, exchange);
-            };
+    function getPeriodRange(period) {
+        const now = Date.now();
+        let min = now;
+        switch (period) {
+            case '1h': min = now - 60 * 60 * 1000; break;
+            case '1d': min = now - 24 * 60 * 60 * 1000; break;
+            case '1wk': min = now - 7 * 24 * 60 * 60 * 1000; break;
+            case '1mo': min = now - 30 * 24 * 60 * 60 * 1000; break;
+            case '3mo': min = now - 90 * 24 * 60 * 60 * 1000; break;
+            case '6mo': min = now - 180 * 24 * 60 * 60 * 1000; break;
+            case '1y': min = now - 365 * 24 * 60 * 60 * 1000; break;
+            case '3y': min = now - 3 * 365 * 24 * 60 * 60 * 1000; break;
+            case '5y': min = now - 5 * 365 * 24 * 60 * 60 * 1000; break;
+            default: min = now - 5 * 365 * 24 * 60 * 60 * 1000;
         }
-        
-        const mainLayout = document.getElementById('detail-main-layout');
-        
-        priceBox.style.display = 'none';
-        if (mainLayout) mainLayout.style.display = 'grid';
-        chartWrapper.style.display = 'block';
-        if (loadingIndicator) loadingIndicator.style.display = 'flex';
-        
-        const startTimeMs = Date.now();
-        const countdownEl = document.getElementById('loading-countdown');
-        let expectedTimeMs = Math.max(averageFetchTimeMs, 500);     
-        let timeLeftMs = expectedTimeMs;
-        if (countdownEl) countdownEl.innerText = (timeLeftMs / 1000).toFixed(2);
-        
-        const countdownInterval = setInterval(() => {
-            const elapsed = Date.now() - startTimeMs;
-            timeLeftMs = Math.max(expectedTimeMs - elapsed, 50);
-            if (countdownEl) countdownEl.innerText = (timeLeftMs / 1000).toFixed(2);
-        }, 50);
-
-        let yahooSymbol = symbol;
-        if (exchange === 'kospi') yahooSymbol = symbol + '.KS';
-        else if (exchange === 'kosdaq') yahooSymbol = symbol + '.KQ';
-        else if (exchange === 'japan') yahooSymbol = symbol + '.T';
-
-        const periodConfig = {
-            '5y': { range: '5y', interval: '1wk', maxDays: 365 * 5 },
-            '3y': { range: '5y', interval: '1wk', maxDays: 365 * 3 },
-            '1y': { range: '1y', interval: '1d', maxDays: 365 },
-            '6mo': { range: '6mo', interval: '1d', maxDays: 180 },
-            '3mo': { range: '3mo', interval: '1d', maxDays: 90 },
-            '1mo': { range: '1mo', interval: '1d', maxDays: 30 },
-            '1wk': { range: '5d', interval: '1h', maxDays: 7 }, // 15m에서 1h로 늘려 캔들 뭉침 해소
-            '1d': { range: '1d', interval: '15m', maxDays: 1 }, // 5m에서 15m로 변경
-            '1h': { range: '1d', interval: '5m', maxDays: 1 } // 1m에서 5m로 변경
-        };
-        const pConf = periodConfig[period] || periodConfig['5y'];
-
-        if (useCached && currentDetailData) {
-            const currentPrice = currentDetailData[currentDetailData.length - 1].c;
-            const prevClose = currentDetailData[0].c; 
-            const netChange = currentPrice - prevClose;
-            
-            clearInterval(countdownInterval);
-            if (loadingIndicator) loadingIndicator.style.display = 'none';
-            priceBox.style.display = 'block';
-
-            renderDetailChart(currentDetailData, netChange >= 0, period);
-            return;
-        }
-
-        const isScale100 = symbol.toUpperCase().includes('JPY') || symbol.toUpperCase().includes('VND');
-        const scaleFactor = isScale100 ? 100 : 1;
-
-        try {
-            const url = `https://query1.finance.yahoo.com/v8/finance/chart/${yahooSymbol}?interval=${pConf.interval}&range=${pConf.range}`;
-            const json = await fetchWithProxyFallback(url);
-            const result = json.chart.result[0];
-            
-            let currentPrice = result.meta.regularMarketPrice * scaleFactor;
-            let prevClose = (result.meta.previousClose || result.meta.chartPreviousClose || result.meta.regularMarketPrice) * scaleFactor;
-            
-            // 실시간 틱 데이터와의 초기 화면 불일치를 막기 위해 지수/환율 기준 덮어쓰기
-            const currKey = currencyKeyMap[symbol.toUpperCase()];
-            const idxKey = indexKeyMap[symbol.toUpperCase()];
-            if (currKey && window.latestTickResult && window.latestTickResult.currencies[currKey]) {
-                const tickCur = window.latestTickResult.currencies[currKey];
-                currentPrice = tickCur.current;
-                prevClose = tickCur.current - tickCur.netChange;
-            } else if (idxKey && window.latestTickResult && window.latestTickResult.indices[idxKey]) {
-                const tickIdx = window.latestTickResult.indices[idxKey];
-                currentPrice = tickIdx.current;
-                prevClose = tickIdx.current - tickIdx.netChange;
-            }
-
-            const netChange = currentPrice - prevClose;
-            const pctChange = (netChange / prevClose) * 100;
-            const currency = result.meta.currency;
-            window.currentDetailCurrency = currency;
-            
-            let timestamps = result.timestamp || [];
-            let closePrices = [];
-            let openPrices = [];
-            let highPrices = [];
-            let lowPrices = [];
-            let volumes = [];
-            
-            if (result.indicators && result.indicators.quote && result.indicators.quote[0]) {
-                closePrices = result.indicators.quote[0].close || [];
-                openPrices = result.indicators.quote[0].open || [];
-                highPrices = result.indicators.quote[0].high || [];
-                lowPrices = result.indicators.quote[0].low || [];
-                volumes = result.indicators.quote[0].volume || [];
-            }
-            
-            const validData = [];
-            const nowTime = Date.now();
-            for (let i = 0; i < timestamps.length; i++) {
-                if (closePrices[i] !== null && closePrices[i] !== undefined) {
-                    const date = new Date(timestamps[i] * 1000);
-                    
-                    if (period === '1h' && (nowTime - date.getTime() > 60 * 60 * 1000)) continue;
-                    if (period === '3y' && (nowTime - date.getTime() > 365 * 3 * 24 * 60 * 60 * 1000)) continue;
-                    
-                    validData.push({
-                        x: date.getTime(),
-                        o: (openPrices[i] !== null ? openPrices[i] : closePrices[i]) * scaleFactor,
-                        h: (highPrices[i] !== null ? highPrices[i] : closePrices[i]) * scaleFactor,
-                        l: (lowPrices[i] !== null ? lowPrices[i] : closePrices[i]) * scaleFactor,
-                        c: closePrices[i] * scaleFactor,
-                        v: volumes[i] !== null ? volumes[i] : 0
-                    });
-                }
-            }
-
-            if (validData.length === 0) {
-                throw new Error("No chart data available");
-            }
-
-            // 마지막 봉/라인 데이터를 실시간 틱과 연계하여 싱크 맞춤
-            if (validData.length > 0) {
-                validData[validData.length - 1].c = currentPrice;
-                validData[validData.length - 1].h = Math.max(validData[validData.length - 1].h, currentPrice);
-                validData[validData.length - 1].l = Math.min(validData[validData.length - 1].l, currentPrice);
-            }
-
-            clearInterval(countdownInterval);
-            
-            const fetchElapsed = Date.now() - startTimeMs;
-            if (fetchElapsed < expectedTimeMs) {
-                await new Promise(resolve => setTimeout(resolve, expectedTimeMs - fetchElapsed));
-            }
-            if (countdownEl) countdownEl.innerText = "0.00"; 
-
-            averageFetchTimeMs = (averageFetchTimeMs * 0.7) + (fetchElapsed * 0.3);
-            
-            if (loadingIndicator) loadingIndicator.style.display = 'none';
-            priceBox.style.display = 'block';
-
-            priceEl.innerText = `${formatNumber(currentPrice, currency === 'KRW' || currency === 'JPY' ? 0 : 2)} ${currency}`;
-            
-            const changeSign = netChange >= 0 ? "+" : "";
-            changeEl.innerText = `${changeSign}${formatNumber(netChange, currency === 'KRW' || currency === 'JPY' ? 0 : 2)} (${changeSign}${formatNumber(pctChange, 2)}%)`;
-            if (netChange >= 0) {
-                changeEl.className = "index-change-badge bullish-badge";
-            } else {
-                changeEl.className = "index-change-badge bearish-badge";
-            }
-
-            currentDetailData = validData;
-            renderDetailChart(validData, netChange >= 0, period);
-
-            const consensusBox = document.getElementById('detail-consensus-box');
-            const consensusRating = document.getElementById('consensus-rating');
-            const consensusTarget = document.getElementById('consensus-target');
-            
-            try {
-                const quoteUrl = `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${yahooSymbol}?modules=financialData,defaultKeyStatistics,summaryDetail,price,incomeStatementHistory`;
-                const quoteJson = await fetchWithProxyFallback(quoteUrl);
-                const qRes = quoteJson.quoteSummary.result[0];
-                const financialData = qRes.financialData || {};
-                const keyStats = qRes.defaultKeyStatistics || {};
-                const summaryDetail = qRes.summaryDetail || {};
-                const priceData = qRes.price || {};
-                const incHistory = qRes.incomeStatementHistory ? qRes.incomeStatementHistory.incomeStatementHistory : [];
-                
-                const rating = financialData.recommendationKey || 'N/A';
-                const target = financialData.targetMeanPrice ? financialData.targetMeanPrice.raw : 'N/A';
-                
-                if (consensusBox) {
-                    if (rating !== 'none' && rating !== 'N/A') {
-                        consensusRating.innerText = rating.toUpperCase();
-                        consensusTarget.innerText = target !== 'N/A' ? `${formatNumber(target * scaleFactor, 2)} ${currency}` : 'N/A';
-                        if (rating.toLowerCase().includes('buy')) consensusRating.style.color = 'var(--bullish)';
-                        else if (rating.toLowerCase().includes('sell')) consensusRating.style.color = 'var(--bearish)';
-                        else consensusRating.style.color = 'var(--text-secondary)';
-                        consensusBox.style.display = 'block';
-                    } else {
-                        consensusBox.style.display = 'none';
-                    }
-                }
-                
-                const pTarget = document.getElementById('panel-target-price');
-                if (pTarget) pTarget.innerText = target !== 'N/A' ? `${formatNumber(target * scaleFactor, 2)} ${currency}` : 'N/A';
-                
-                const pMarker = document.getElementById('panel-rating-marker');
-                if (pMarker && rating !== 'none' && rating !== 'N/A') {
-                    let pos = 50;
-                    const r = rating.toLowerCase();
-                    if (r === 'strong_buy') pos = 90;
-                    else if (r === 'buy') pos = 75;
-                    else if (r === 'hold') pos = 50;
-                    else if (r === 'underperform' || r === 'sell') pos = 25;
-                    else if (r === 'strong_sell') pos = 10;
-                    pMarker.style.left = `${pos}%`;
-                }
-
-                const pVol = document.getElementById('panel-volume');
-                if (pVol) pVol.innerText = summaryDetail.volume ? formatNumber(summaryDetail.volume.raw, 0) : 'N/A';
-                
-                const pCap = document.getElementById('panel-mktcap');
-                if (pCap) pCap.innerText = priceData.marketCap ? priceData.marketCap.fmt : 'N/A';
-                
-                const pPer = document.getElementById('panel-per');
-                if (pPer) pPer.innerText = summaryDetail.trailingPE ? formatNumber(summaryDetail.trailingPE.raw, 2) : 'N/A';
-                
-                const pEps = document.getElementById('panel-eps');
-                if (pEps) pEps.innerText = keyStats.trailingEps ? formatNumber(keyStats.trailingEps.raw * scaleFactor, 2) : 'N/A';
-                
-                const pDiv = document.getElementById('panel-div');
-                if (pDiv) pDiv.innerText = summaryDetail.dividendYield ? formatNumber(summaryDetail.dividendYield.raw * 100, 2) + '%' : 'N/A';
-                
-                const p52h = document.getElementById('panel-52high');
-                if (p52h) p52h.innerText = summaryDetail.fiftyTwoWeekHigh ? formatNumber(summaryDetail.fiftyTwoWeekHigh.raw * scaleFactor, 2) : 'N/A';
-                
-                const p52l = document.getElementById('panel-52low');
-                if (p52l) p52l.innerText = summaryDetail.fiftyTwoWeekLow ? formatNumber(summaryDetail.fiftyTwoWeekLow.raw * scaleFactor, 2) : 'N/A';
-                
-                // API 데이터로부터 배당 및 재무 정보 데이터 파싱
-                const parsedDividend = {
-                    yield: (summaryDetail.dividendYield && summaryDetail.dividendYield.raw) ? summaryDetail.dividendYield.raw * 100 : 'N/A',
-                    dps: (summaryDetail.dividendRate && summaryDetail.dividendRate.raw) ? summaryDetail.dividendRate.raw * scaleFactor : 'N/A',
-                    payoutRatio: (keyStats.payoutRatio && keyStats.payoutRatio.raw) ? keyStats.payoutRatio.raw * 100 : 0,
-                    exDate: (summaryDetail.exDividendDate && summaryDetail.exDividendDate.fmt) ? summaryDetail.exDividendDate.fmt : 'N/A',
-                    frequency: 'N/A'
-                };
-                
-                if (parsedDividend.yield !== 'N/A' && parsedDividend.yield > 0) {
-                    if (exchange === 'kospi' || exchange === 'kosdaq') {
-                        parsedDividend.frequency = '분기 또는 기말 배당';
-                    } else {
-                        parsedDividend.frequency = '분기 배당 (Quarterly)';
-                    }
-                }
-
-                const parsedIncHistory = [];
-                if (incHistory && incHistory.length > 0) {
-                    incHistory.forEach(inc => {
-                        parsedIncHistory.push({
-                            endDate: inc.endDate ? inc.endDate.fmt : 'N/A',
-                            totalRevenue: inc.totalRevenue && inc.totalRevenue.raw ? inc.totalRevenue.raw / 1000 : 0,
-                            operatingIncome: inc.operatingIncome && inc.operatingIncome.raw ? inc.operatingIncome.raw / 1000 : 0,
-                            netIncome: inc.netIncome && inc.netIncome.raw ? inc.netIncome.raw / 1000 : 0
-                        });
-                    });
-                } else {
-                    // API 실적 데이터 누락 시 mock 데이터 유입으로 강건성 유지
-                    const mockData = getMockFinancialsAndDividends(symbol, currentPrice, currency);
-                    mockData.financials.forEach(f => {
-                        parsedIncHistory.push(f);
-                    });
-                    if (parsedDividend.yield === 'N/A') {
-                        parsedDividend.yield = mockData.dividend.yield;
-                        parsedDividend.dps = mockData.dividend.dps;
-                        parsedDividend.payoutRatio = mockData.dividend.payoutRatio;
-                        parsedDividend.exDate = mockData.dividend.exDate;
-                        parsedDividend.frequency = mockData.dividend.frequency;
-                    }
-                }
-
-                renderFinancialsAndDividends(symbol, name, parsedIncHistory, parsedDividend, currency);
-
-                // 관련 최신 주요 뉴스 렌더링 호출
-                renderRelatedNews(symbol, name);
-
-            } catch (e) {
-                console.warn("Failed to load consensus data, generating mock data:", e);
-                generateMockConsensus(currentPrice, currency, exchange);
-            }
-
-            const pSource = document.getElementById('panel-consensus-source');
-            if (pSource) {
-                if (exchange === 'kospi' || exchange === 'kosdaq') {
-                    pSource.innerText = "출처: 네이버 금융 / 한국경제 (실시간)";
-                } else if (exchange === 'japan') {
-                    pSource.innerText = "출처: Yahoo Finance Japan / Nikkei (실시간)";
-                } else {
-                    pSource.innerText = "출처: Yahoo Finance / Bloomberg (실시간)";
-                }
-            }
-
-        } catch (err) {
-            console.warn("Failed to load ticker detail from Yahoo, falling back to mock data:", err);
-            
-            const isKRW_JPY = exchange === 'kospi' || exchange === 'kosdaq' || exchange === 'japan';
-            const baseValue = isKRW_JPY ? (exchange === 'japan' ? 5000 : 50000) : 150;
-            let currentPrice = (baseValue + (Math.random() * baseValue * 0.5)) * scaleFactor;
-            let currency = (exchange === 'nasdaq' || exchange === 'nyse') ? 'USD' : (exchange === 'japan' ? 'JPY' : 'KRW');
-            if (symbol.toUpperCase().includes('KRW') || symbol.toUpperCase().endsWith('=X')) {
-                currency = 'KRW';
-            }
-            window.currentDetailCurrency = currency;
-            
-            // 실시간 틱 데이터와의 초기 화면 불일치를 막기 위해 지수/환율 기준 덮어쓰기
-            const currKey = currencyKeyMap[symbol.toUpperCase()];
-            const idxKey = indexKeyMap[symbol.toUpperCase()];
-            let prevClose;
-
-            if (currKey && window.latestTickResult && window.latestTickResult.currencies[currKey]) {
-                const tickCur = window.latestTickResult.currencies[currKey];
-                currentPrice = tickCur.current;
-                prevClose = tickCur.current - tickCur.netChange;
-            } else if (idxKey && window.latestTickResult && window.latestTickResult.indices[idxKey]) {
-                const tickIdx = window.latestTickResult.indices[idxKey];
-                currentPrice = tickIdx.current;
-                prevClose = tickIdx.current - tickIdx.netChange;
-            } else {
-                prevClose = currentPrice * (0.95 + Math.random() * 0.1);
-            }
-
-            generateMockConsensus(currentPrice, currency, exchange);
-
-            const pSource = document.getElementById('panel-consensus-source');
-            if (pSource) {
-                if (exchange === 'kospi' || exchange === 'kosdaq') {
-                    pSource.innerText = "출처: 네이버 금융 / 한국경제 (지연)";
-                } else if (exchange === 'japan') {
-                    pSource.innerText = "출처: Yahoo Finance Japan (지연)";
-                } else {
-                    pSource.innerText = "출처: Yahoo Finance / Bloomberg (지연)";
-                }
-            }
-
-            const netChange = currentPrice - prevClose;
-            const pctChange = (netChange / prevClose) * 100;
-            
-            const validData = [];
-            const now = new Date();
-            let simPrice = prevClose;
-            
-            const simDays = { '5y': 1800, '3y': 1000, '1y': 365, '6mo': 180, '3mo': 90, '1mo': 30, '1wk': 7, '1d': 1, '1h': 0.04 }[period] || 1800;
-            const simSteps = Math.min(simDays * (period === '1d' ? 100 : (period === '1h' ? 60 : 1)), 300);
-            const msPerStep = (simDays * 24 * 60 * 60 * 1000) / simSteps;
-            const startTime = now.getTime() - (simDays * 24 * 60 * 60 * 1000);
-            
-            for (let i = 0; i <= simSteps; i++) {
-                const date = new Date(startTime + (i * msPerStep));
-                
-                const change = (Math.random() - 0.48) * 0.04;
-                const open = simPrice;
-                simPrice = simPrice * (1 + change);
-                const high = Math.max(open, simPrice) * (1 + Math.random() * 0.01);
-                const low = Math.min(open, simPrice) * (1 - Math.random() * 0.01);
-                const vol = Math.floor(100000 + Math.random() * 900000);
-                
-                validData.push({
-                    x: date.getTime(),
-                    o: open,
-                    h: high,
-                    l: low,
-                    c: simPrice,
-                    v: vol
-                });
-            }
-
-            // 마지막 봉/라인 데이터를 실시간 틱과 연계하여 싱크 맞춤
-            if (validData.length > 0) {
-                validData[validData.length - 1].c = currentPrice;
-                validData[validData.length - 1].h = Math.max(validData[validData.length - 1].h, currentPrice);
-                validData[validData.length - 1].l = Math.min(validData[validData.length - 1].l, currentPrice);
-            }
-            
-            clearInterval(countdownInterval);
-            
-            const mockElapsed = Date.now() - startTimeMs;
-            if (mockElapsed < expectedTimeMs) {
-                await new Promise(resolve => setTimeout(resolve, expectedTimeMs - mockElapsed));
-            }
-            if (countdownEl) countdownEl.innerText = "0.00";
-
-            averageFetchTimeMs = (averageFetchTimeMs * 0.7) + (mockElapsed * 0.3);
-            
-            if (loadingIndicator) loadingIndicator.style.display = 'none';
-            priceBox.style.display = 'block';
-
-            priceEl.innerText = `${formatNumber(currentPrice, currency === 'KRW' || currency === 'JPY' ? 0 : 2)} ${currency}`;
-            
-            const changeSign = netChange >= 0 ? "+" : "";
-            changeEl.innerText = `${changeSign}${formatNumber(netChange, currency === 'KRW' || currency === 'JPY' ? 0 : 2)} (${changeSign}${formatNumber(pctChange, 2)}%)`;
-            if (netChange >= 0) {
-                changeEl.className = "index-change-badge bullish-badge";
-            } else {
-                changeEl.className = "index-change-badge bearish-badge";
-            }
-
-            currentDetailData = validData;
-            renderDetailChart(validData, netChange >= 0, period);
-            renderRelatedNews(symbol, name); // Fallback 뉴스 렌더링 호출
-        }
+        return { min, max: now };
     }
 
-    function renderDetailChart(dataArr, isBullish, period) {
-        const ctx = document.getElementById("chart-ticker-detail").getContext("2d");
-        
-        const activeModeBtn = document.querySelector('#detail-mode-toggle .mode-btn.active');
-        if (activeModeBtn) {
-            currentDetailMode = activeModeBtn.getAttribute('data-mode') || currentDetailMode;
-        }
-        
-        if (detailChart) {
-            detailChart.destroy();
-        }
+    function generateMockHistoryForTicker(symbol, period, config) {
+        const range = getPeriodRange(period);
+        const now = Date.now();
+        const listingTime = config.listingDate ? new Date(config.listingDate).getTime() : now - (365 * 24 * 60 * 60 * 1000);
+        const openingPrice = config.openingPrice || 100;
 
-        let datasets = [];
-
-        if (currentDetailMode === 'candlestick') {
-            datasets.push({
-                type: 'candlestick',
-                label: '데이터',
-                data: dataArr,
-                yAxisID: 'y',
-                color: {
-                    up: '#f43f5e',
-                    down: '#3b82f6',
-                    unchanged: '#94a3b8'
-                }
-            });
-        } else {
-            const lineData = dataArr.map(d => ({ x: d.x, y: d.c }));
-            const lineColor = isBullish ? '#10b981' : '#f43f5e';
-            const gradBg = ctx.createLinearGradient(0, 0, 0, 400);
-            gradBg.addColorStop(0, isBullish ? 'rgba(16, 185, 129, 0.25)' : 'rgba(244, 63, 94, 0.25)');
-            gradBg.addColorStop(1, 'rgba(0, 0, 0, 0)');
+        const data = [];
+        let intervalMs = 24 * 60 * 60 * 1000;
+        
+        const startTime = Math.max(range.min, listingTime);
+        let currentPrice = openingPrice;
+        
+        for (let t = startTime; t <= range.max; t += intervalMs) {
+            const change = (Math.random() - 0.485) * 0.025 * currentPrice;
+            const o = currentPrice;
+            const c = currentPrice + change;
+            const h = Math.max(o, c) + Math.random() * 0.01 * currentPrice;
+            const l = Math.min(o, c) - Math.random() * 0.01 * currentPrice;
             
-            datasets.push({
-                type: 'line',
-                label: '데이터',
-                data: lineData,
-                yAxisID: 'y',
-                borderColor: lineColor,
-                borderWidth: 2.5,
-                backgroundColor: gradBg,
-                fill: true,
-                pointRadius: 0,
-                pointHoverRadius: 6,
-                tension: 0.2
+            data.push({
+                x: t,
+                o: o,
+                h: h,
+                l: l,
+                c: c,
+                v: Math.floor(Math.random() * 1000000 + 50000)
             });
+            currentPrice = c;
         }
 
-        detailChart = new Chart(ctx, {
-            type: currentDetailMode === 'candlestick' ? 'candlestick' : 'line',
-            data: { datasets: datasets },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                interaction: { mode: 'index', intersect: false },
-                onHover: (event, chartElements) => {
-                    const descEl = document.getElementById('detail-candle-desc');
-                    if (chartElements && chartElements.length > 0) {
-                        const idx = chartElements[0].index;
-                        const origPoint = currentDetailData[idx];
-                        if (origPoint) {
-                            const d = new Date(origPoint.x);
-                            const timeStr = (period === '1d' || period === '1h') 
-                                ? `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}` 
-                                : `${d.getFullYear()}-${(d.getMonth()+1).toString().padStart(2,'0')}-${d.getDate().toString().padStart(2,'0')}`;
-                            
-                            const curr = window.currentDetailCurrency || 'USD';
-                            const dec = (curr === 'KRW' || curr === 'JPY' || curr === 'VND') ? 0 : 2;
-                            let text = `[${timeStr}] <strong style="color: #fbbf24; font-size: 1.1em; margin-left: 6px; margin-right: 10px;">${curr}</strong>`;
-                            if (currentDetailMode === 'candlestick') {
-                                text += `<span style="color:#e2e8f0;">O(시가): <strong>${formatNumber(origPoint.o, dec)}</strong></span> &nbsp;|&nbsp; ` +
-                                        `<span style="color:#f43f5e;">H(고가): <strong>${formatNumber(origPoint.h, dec)}</strong></span> &nbsp;|&nbsp; ` +
-                                        `<span style="color:#3b82f6;">L(저가): <strong>${formatNumber(origPoint.l, dec)}</strong></span> &nbsp;|&nbsp; ` +
-                                        `<span style="color:#10b981;">C(종가): <strong>${formatNumber(origPoint.c, dec)}</strong></span>`;
-                            } else {
-                                text += `<span style="color:#10b981;">C(종가): <strong>${formatNumber(origPoint.c, dec)}</strong></span>`;
-                            }
-                            descEl.innerHTML = text;
-                            descEl.style.opacity = '1';
-                        }
-                    } else {
-                        descEl.innerHTML = `시가 <span style="color:#e2e8f0;"><strong>O</strong>: 시가(Open)</span> &nbsp;|&nbsp; <span style="color:#f43f5e;"><strong>H</strong>: 고가(High)</span> &nbsp;|&nbsp; <span style="color:#3b82f6;"><strong>L</strong>: 저가(Low)</span> &nbsp;|&nbsp; <span style="color:#10b981;"><strong>C</strong>: 종가(Close)</span>`;
-                        descEl.style.opacity = '0.4';
-                    }
-                },
-                plugins: {
-                    legend: { display: false },
-                    tooltip: {
-                        enabled: false,
-                        external: externalTooltipHandler,
-                        displayColors: false,
-                        callbacks: {
-                            title: function(tooltipItems) {
-                                const title = tooltipItems[0].label || '';
-                                const curr = window.currentDetailCurrency || 'USD';
-                                return `${title} <strong style="color: #fbbf24; margin-left: 6px;">${curr}</strong>`;
-                            },
-                            label: function(context) {
-                                const mode = currentDetailMode || 'line';
-                                const raw = context.raw || {};
-                                const o = raw.o;
-                                const h = raw.h;
-                                const l = raw.l;
-                                const c = raw.c !== undefined ? raw.c : raw.y;
-                                
-                                const curr = window.currentDetailCurrency || 'USD';
-                                const dec = (curr === 'KRW' || curr === 'JPY' || curr === 'VND') ? 0 : 2;
-                                
-                                if (mode === 'candlestick' && o !== undefined) {
-                                    return [
-                                        `<span style="color:#e2e8f0;">O(시가): <strong>${formatNumber(o, dec)}</strong></span>`,
-                                        `<span style="color:#f43f5e;">H(고가): <strong>${formatNumber(h, dec)}</strong></span>`,
-                                        `<span style="color:#3b82f6;">L(저가): <strong>${formatNumber(l, dec)}</strong></span>`,
-                                        `<span style="color:#10b981;">C(종가): <strong>${formatNumber(c, dec)}</strong></span>`
-                                    ];
-                                } else {
-                                    return `<span style="color:#10b981;">C(종가): <strong>${formatNumber(c, dec)}</strong></span>`;
-                                }
-                            }
-                        },
-                        backgroundColor: 'rgba(10, 15, 30, 0.9)', titleColor: '#f8fafc', bodyColor: '#94a3b8', borderColor: 'rgba(255, 255, 255, 0.1)', borderWidth: 1, padding: 12,
-                        caretSize: 0
-                    },
-                    zoom: {
-                        pan: {
-                            enabled: true,
-                            mode: 'x',
-                            onPan: function({chart}) {
-                                autoScaleYAxis(chart);
-                                chart.update('none');
-                                if(detailVolumeChart) {
-                                    detailVolumeChart.options.scales.x.min = chart.scales.x.min;
-                                    detailVolumeChart.options.scales.x.max = chart.scales.x.max;
-                                    detailVolumeChart.update('none');
-                                }
-                            }
-                        },
-                        zoom: {
-                            wheel: { enabled: true },
-                            pinch: { enabled: true },
-                            mode: 'x',
-                            onZoom: function({chart}) {
-                                autoScaleYAxis(chart);
-                                chart.update('none');
-                                if(detailVolumeChart) {
-                                    detailVolumeChart.options.scales.x.min = chart.scales.x.min;
-                                    detailVolumeChart.options.scales.x.max = chart.scales.x.max;
-                                    detailVolumeChart.update('none');
-                                }
-                            }
-                        }
-                    }
-                },
-                scales: {
-                    x: {
-                        type: 'time',
-                        time: { tooltipFormat: period === '1d' || period === '1h' ? 'HH:mm' : 'yyyy-MM-dd' },
-                        grid: { color: 'rgba(255, 255, 255, 0.03)' },
-                        ticks: { color: '#64748b', maxTicksLimit: 10, maxRotation: 0 }
-                    },
-                    y: {
-                        type: 'linear',
-                        display: true,
-                        position: 'right',
-                        grid: { color: 'rgba(255, 255, 255, 0.05)' },
-                        ticks: { color: '#64748b' },
-                        grace: '5%',
-                        beginAtZero: false
-                    }
-                }
-            }
-        });
-
-        const volCtx = document.getElementById("chart-detail-volume").getContext("2d");
-        if (detailVolumeChart) {
-            detailVolumeChart.destroy();
+        if (data.length === 0) {
+            data.push({ x: range.max, o: openingPrice, h: openingPrice, l: openingPrice, c: openingPrice, v: 0 });
         }
-
-        const volumeData = dataArr.map(d => ({ x: d.x, y: d.v || 0, c: d.c, o: d.o }));
-
-        detailVolumeChart = new Chart(volCtx, {
-            type: 'bar',
-            data: {
-                datasets: [
-                    {
-                        label: '거래량',
-                        data: volumeData,
-                        backgroundColor: dataArr.map(d => (d.c >= d.o ? 'rgba(244, 63, 94, 0.3)' : 'rgba(59, 130, 246, 0.3)')),
-                        borderColor: dataArr.map(d => (d.c >= d.o ? 'rgba(244, 63, 94, 0.6)' : 'rgba(59, 130, 246, 0.6)')),
-                        borderWidth: 1,
-                        barPercentage: 0.8,
-                        categoryPercentage: 0.9,
-                        minBarLength: 2,
-                        yAxisID: 'y'
-                    }
-                ]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                interaction: { mode: 'index', intersect: false },
-                plugins: {
-                    legend: { display: false },
-                    tooltip: volumeTooltipConfig,
-                    zoom: {
-                        pan: {
-                            enabled: true, mode: 'x',
-                            onPan: function({chart}) {
-                                if(detailChart) {
-                                    detailChart.options.scales.x.min = chart.scales.x.min;
-                                    detailChart.options.scales.x.max = chart.scales.x.max;
-                                    detailChart.update('none');
-                                }
-                            }
-                        },
-                        zoom: {
-                            wheel: { enabled: true }, mode: 'x',
-                            onZoom: function({chart}) {
-                                if(detailChart) {
-                                    detailChart.options.scales.x.min = chart.scales.x.min;
-                                    detailChart.options.scales.x.max = chart.scales.x.max;
-                                    detailChart.update('none');
-                                }
-                            }
-                        }
-                    }
-                },
-                scales: {
-                    x: {
-                        type: 'time',
-                        display: false,
-                        offset: true
-                    },
-                    y: {
-                        display: true, position: 'right',
-                        grid: { color: 'rgba(255, 255, 255, 0.05)' },
-                        ticks: { color: '#64748b', maxTicksLimit: 4, callback: function(value) {
-                            if (value >= 1e6) return (value / 1e6).toFixed(1) + 'M';
-                            if (value >= 1e3) return (value / 1e3).toFixed(1) + 'K';
-                            return value;
-                        }}
-                    }
-                }
-            }
-        });
-    }
-
-    function initTimeframeButtons() {
-        const summaryModeBtns = document.querySelectorAll('#summary-mode-toggle .mode-btn');
-        summaryModeBtns.forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                summaryModeBtns.forEach(b => b.classList.remove('active'));
-                e.target.classList.add('active');
-                currentSummaryMode = e.target.getAttribute('data-mode');
-                initMarketSummaryChart(currentSummaryPeriod, true);
-            });
-        });
-        
-        const summaryBtns = document.querySelectorAll('#summary-timeframe-buttons .time-btn');
-        summaryBtns.forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                summaryBtns.forEach(b => b.classList.remove('active'));
-                e.target.classList.add('active');
-                currentSummaryPeriod = e.target.getAttribute('data-period');
-                initMarketSummaryChart(currentSummaryPeriod, false);
-            });
-        });
-
-        const detailModeBtns = document.querySelectorAll('#detail-mode-toggle .mode-btn');
-        detailModeBtns.forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                if (!currentTickerState.symbol) return;
-                detailModeBtns.forEach(b => b.classList.remove('active'));
-                e.target.classList.add('active');
-                currentDetailMode = e.target.getAttribute('data-mode');
-                loadTickerDetail(currentTickerState.symbol, currentTickerState.name, currentTickerState.exchange, currentDetailPeriod, true);
-            });
-        });
-
-        const detailBtns = document.querySelectorAll('#detail-timeframe-buttons .time-btn');
-        detailBtns.forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                if (!currentTickerState.symbol) return;
-                detailBtns.forEach(b => b.classList.remove('active'));
-                e.target.classList.add('active');
-                const p = e.target.getAttribute('data-period');
-                loadTickerDetail(currentTickerState.symbol, currentTickerState.name, currentTickerState.exchange, p, false);
-            });
-        });
-
-        const prevBtn = document.getElementById('summary-slide-prev');
-        const nextBtn = document.getElementById('summary-slide-next');
-        const titleEl = document.getElementById('market-slide-title');
-
-        function animateChart(direction) {
-            const container = document.querySelector('.market-summary-box');
-            if(container) {
-                container.classList.remove('slide-anim-left', 'slide-anim-right');
-                void container.offsetWidth;
-                container.classList.add(direction === 'left' ? 'slide-anim-left' : 'slide-anim-right');
-            }
-        }
-
-        if (prevBtn) {
-            prevBtn.addEventListener('click', () => {
-                currentSummarySlideIndex = (currentSummarySlideIndex - 1 + marketSlides.length) % marketSlides.length;
-                if(titleEl) titleEl.innerText = marketSlides[currentSummarySlideIndex].title;
-                animateChart('left');
-                initMarketSummaryChart('3mo', false);
-            });
-        }
-        if (nextBtn) {
-            nextBtn.addEventListener('click', () => {
-                currentSummarySlideIndex = (currentSummarySlideIndex + 1) % marketSlides.length;
-                if(titleEl) titleEl.innerText = marketSlides[currentSummarySlideIndex].title;
-                animateChart('right');
-                initMarketSummaryChart('3mo', false);
-            });
-        }
+        return data;
     }
 
     // === Portfolio Feature Core Logic ===
     let portfolio = JSON.parse(localStorage.getItem('my_portfolio_items')) || [];
     let portfolioBacktestChart = null;
+    let backtestPeriod = '5y';
+    let simulationSeries = [];
+    let latestIpoTime = 0;
 
-    // 추천 및 분석 관련 차트 인스턴스 전역 관리
-    let recommendedPortfolioChart = null;
-    let analysisTimeSeriesChart = null;
-    let weightStartChart = null;
-    let weightCurrentChart = null;
-    let compMyPieChart = null;
-    let compRecPieChart = null;
-
-    let selectedRecPortfolioId = 'stock80_bond20';
-    let selectedAnalysisTarget = 'my';
-
-    const RECOMMENDED_PORTFOLIOS = {
-        stock80_bond20: {
-            title: "Stock 80% / Bond 20%",
-            desc: "미국 전체 주식(VTI) 80%와 미국 전체 채권(BND) 20%로 구성된 클래식 포트폴리오입니다.",
-            cagr: "8.2%",
-            mdd: "-18.5%",
-            assets: [
-                { symbol: "VTI", name: "Vanguard Total Stock Market ETF", weight: 0.8, exchange: "nasdaq" },
-                { symbol: "BND", name: "Vanguard Total Bond Market ETF", weight: 0.2, exchange: "nasdaq" }
-            ]
-        },
-        allweather: {
-            title: "올웨더 포트폴리오 (All Weather)",
-            desc: "주식 30%, 장기채 40%, 중기채 15%, 원자재 7.5%, 금 7.5%로 계절 상관없이 자산을 방어합니다.",
-            cagr: "5.8%",
-            mdd: "-12.1%",
-            assets: [
-                { symbol: "SPY", name: "SPDR S&P 500 ETF Trust", weight: 0.3, exchange: "nyse" },
-                { symbol: "TLT", name: "iShares 20+ Year Treasury Bond ETF", weight: 0.4, exchange: "nasdaq" },
-                { symbol: "IEF", name: "iShares 7-10 Year Treasury Bond ETF", weight: 0.15, exchange: "nasdaq" },
-                { symbol: "GLD", name: "SPDR Gold Shares", weight: 0.075, exchange: "nyse" },
-                { symbol: "DBC", name: "Invesco DB Commodity Index Tracking Fund", weight: 0.075, exchange: "nyse" }
-            ]
-        },
-        goldenbutterfly: {
-            title: "골든 버터플라이 (Golden Butterfly)",
-            desc: "대형주 20%, 소형성장주 20%, 장기채 20%, 단기채 20%, 금 20%로 단단한 연복리를 만듭니다.",
-            cagr: "6.3%",
-            mdd: "-10.5%",
-            assets: [
-                { symbol: "SPY", name: "SPDR S&P 500 ETF Trust", weight: 0.2, exchange: "nyse" },
-                { symbol: "IJS", name: "iShares S&P Small-Cap 600 Value ETF", weight: 0.2, exchange: "nyse" },
-                { symbol: "TLT", name: "iShares 20+ Year Treasury Bond ETF", weight: 0.2, exchange: "nasdaq" },
-                { symbol: "SHY", name: "iShares 1-3 Year Treasury Bond ETF", weight: 0.2, exchange: "nasdaq" },
-                { symbol: "GLD", name: "SPDR Gold Shares", weight: 0.2, exchange: "nyse" }
-            ]
-        },
-        momentum60_40: {
-            title: "Momentum 60/40",
-            desc: "모멘텀 주식(MTUM) 60%와 미국 전체 채권(BND) 40%로 구성되어 시장 트렌드를 추종하는 포트폴리오입니다.",
-            cagr: "9.1%",
-            mdd: "-16.2%",
-            assets: [
-                { symbol: "MTUM", name: "iShares MSCI USA Momentum Factor ETF", weight: 0.6, exchange: "nasdaq" },
-                { symbol: "BND", name: "Vanguard Total Bond Market ETF", weight: 0.4, exchange: "nasdaq" }
-            ]
-        },
-        allweather_ray: {
-            title: "올웨더 (All Weather - Ray Dalio)",
-            desc: "레이 달리오의 올웨더 구성으로 주식 30%(VTI), 장기채 40%(TLT), 중기채 15%(IEI), 원자재 7.5%(DBC), 금 7.5%(GLD)로 자산을 배분합니다.",
-            cagr: "6.2%",
-            mdd: "-11.8%",
-            assets: [
-                { symbol: "VTI", name: "Vanguard Total Stock Market ETF", weight: 0.3, exchange: "nasdaq" },
-                { symbol: "TLT", name: "iShares 20+ Year Treasury Bond ETF", weight: 0.4, exchange: "nasdaq" },
-                { symbol: "IEI", name: "iShares 3-7 Year Treasury Bond ETF", weight: 0.15, exchange: "nasdaq" },
-                { symbol: "DBC", name: "Invesco DB Commodity Index (BC)", weight: 0.075, exchange: "nyse" },
-                { symbol: "GLD", name: "SPDR Gold Shares", weight: 0.075, exchange: "nyse" }
-            ]
-        },
-        goldenbutterfly_new: {
-            title: "황금나비 (Golden Butterfly - VTI)",
-            desc: "소형가치주(IJS) 20%, 전체주식(VTI) 20%, 단기채(SHY) 20%, 장기채(TLT) 20%, 금(GLD) 20%로 단단한 연복리를 만듭니다.",
-            cagr: "6.5%",
-            mdd: "-9.8%",
-            assets: [
-                { symbol: "IJS", name: "iShares S&P Small-Cap 600 Value ETF", weight: 0.2, exchange: "nyse" },
-                { symbol: "VTI", name: "Vanguard Total Stock Market ETF", weight: 0.2, exchange: "nasdaq" },
-                { symbol: "SHY", name: "iShares 1-3 Year Treasury Bond ETF", weight: 0.2, exchange: "nasdaq" },
-                { symbol: "TLT", name: "iShares 20+ Year Treasury Bond ETF", weight: 0.2, exchange: "nasdaq" },
-                { symbol: "GLD", name: "SPDR Gold Shares", weight: 0.2, exchange: "nyse" }
-            ]
+    // Premium Toast Notification helper
+    function showToast(message, type = 'success') {
+        let container = document.getElementById('toast-container');
+        if (!container) {
+            container = document.createElement('div');
+            container.id = 'toast-container';
+            document.body.appendChild(container);
         }
-    };
+        
+        const toast = document.createElement('div');
+        toast.className = `toast-card ${type}`;
+        
+        let icon = 'ℹ️';
+        if (type === 'success') icon = '✔️';
+        else if (type === 'error') icon = '⚠️';
+        
+        toast.innerHTML = `<span style="font-size: 15px;">${icon}</span> <span>${message}</span>`;
+        container.appendChild(toast);
+        
+        // Auto remove after animation ends (3s total: 2.7s visible + 0.3s fadeout)
+        setTimeout(() => {
+            toast.remove();
+            if (container.children.length === 0) {
+                container.remove();
+            }
+        }, 3000);
+    }
 
-    function renderRecommendedPortfolioCards() {
-        const grid = document.querySelector('#detail-subview-recommended .recommended-grid');
-        if (!grid) return;
+    // Dynamic UI count updater for the Portfolio header button
+    function updatePortfolioHeaderBadge() {
+        const btn = document.getElementById('my-portfolio-btn');
+        if (btn) {
+            if (portfolio.length > 0) {
+                btn.innerHTML = `💼 내 포트폴리오 <span class="portfolio-count-badge">${portfolio.length}</span>`;
+            } else {
+                btn.innerHTML = `💼 내 포트폴리오`;
+            }
+        }
+    }
 
-        grid.innerHTML = Object.entries(RECOMMENDED_PORTFOLIOS).map(([id, port]) => {
-            return `
-                <div class="recommended-card" data-portfolio-id="${id}" style="padding: 20px; cursor: pointer; border: 1px solid rgba(255,255,255,0.07); border-radius: 12px; background: rgba(255, 255, 255, 0.015);" onclick="selectRecommendedPortfolio('${id}')">
-                    <h4 style="margin: 0 0 10px 0; color: #fff; font-size: 15px;">${port.title}</h4>
-                    <p style="color: var(--text-muted); font-size: 12px; line-height: 1.5; margin: 0 0 16px 0; min-height: 54px;">${port.desc}</p>
-                    <div style="display: flex; justify-content: space-between; font-size: 13px;">
-                        <span style="color: var(--text-secondary);">10년 CAGR: <strong style="color: var(--bullish);">${port.cagr}</strong></span>
-                        <span style="color: var(--text-secondary);">MDD: <strong style="color: var(--bearish);">${port.mdd}</strong></span>
-                    </div>
-                </div>
-            `;
-        }).join('');
+    // Dynamic state updater for "Add to Portfolio" button inside Detailed Stock Analysis
+    function updatePortfolioButtonState(symbol) {
+        const addBtn = document.getElementById('add-to-portfolio-btn');
+        if (!addBtn) return;
+        
+        if (!symbol) {
+            addBtn.style.display = 'none';
+            return;
+        }
+        
+        const exists = portfolio.some(item => item.symbol.toUpperCase() === symbol.toUpperCase());
+        if (exists) {
+            addBtn.innerHTML = '✔️ 포트폴리오 담김';
+            addBtn.classList.add('added');
+        } else {
+            addBtn.innerHTML = '➕ 포트폴리오 담기';
+            addBtn.classList.remove('added');
+        }
     }
 
     function savePortfolio() {
         localStorage.setItem('my_portfolio_items', JSON.stringify(portfolio));
-        if (typeof triggerGoogleDriveSync === 'function') {
-            triggerGoogleDriveSync();
+        window.portfolio = portfolio;
+        updatePortfolioHeaderBadge();
+        if (currentTickerState && currentTickerState.symbol) {
+            updatePortfolioButtonState(currentTickerState.symbol);
         }
     }
 
     function addToPortfolio(symbol, name, exchange) {
         const exists = portfolio.some(item => item.symbol.toUpperCase() === symbol.toUpperCase());
         if (exists) {
-            alert('이미 포트폴리오에 담겨있는 종목입니다.');
+            showToast('이미 포트폴리오에 담겨있는 종목입니다.', 'error');
             return;
         }
         portfolio.push({ symbol, name, exchange, quantity: 1 });
         savePortfolio();
-        alert(`${name} 종목을 포트폴리오에 담았습니다.`);
+        showToast(`${name} 종목을 포트폴리오에 담았습니다.`, 'success');
     }
 
     // Get live exchange rate to KRW
@@ -4817,33 +4839,14 @@ document.addEventListener("DOMContentLoaded", () => {
         return 1;
     }
 
-    async function getStockCurrentPriceAndCurrency(symbol, exchange) {
-        let yahooSymbol = symbol;
-        if (exchange === 'kospi') yahooSymbol = symbol + '.KS';
-        else if (exchange === 'kosdaq') yahooSymbol = symbol + '.KQ';
-        else if (exchange === 'japan') yahooSymbol = symbol + '.T';
-
-        try {
-            const url = `https://query1.finance.yahoo.com/v8/finance/chart/${yahooSymbol}?interval=1d&range=1d`;
-            const json = await fetchWithProxyFallback(url);
-            const result = json.chart.result[0];
-            const price = result.meta.regularMarketPrice;
-            const currency = result.meta.currency;
-            return { price, currency };
-        } catch (e) {
-            console.warn(`Failed to fetch current price for ${symbol}, simulating...`);
-            const isKRW_JPY = exchange === 'kospi' || exchange === 'kosdaq' || exchange === 'japan';
-            const baseValue = isKRW_JPY ? (exchange === 'japan' ? 5000 : 50000) : 150;
-            const price = baseValue + (Math.random() * baseValue * 0.2);
-            const currency = (exchange === 'nasdaq' || exchange === 'nyse') ? 'USD' : (exchange === 'japan' ? 'JPY' : 'KRW');
-            return { price, currency };
-        }
-    }
 
     async function renderPortfolioModal() {
         const listEl = document.getElementById('portfolio-items-list');
         if (!listEl) return;
+        
+        const headerEl = document.getElementById('portfolio-list-header');
         listEl.innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 20px;">포트폴리오 정보를 불러오는 중...</div>';
+        if (headerEl) headerEl.style.display = 'none';
 
         if (portfolio.length === 0) {
             listEl.innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 20px;">포트폴리오에 담긴 종목이 없습니다.</div>';
@@ -4854,6 +4857,10 @@ document.addEventListener("DOMContentLoaded", () => {
         const pricePromises = portfolio.map(item => getStockCurrentPriceAndCurrency(item.symbol, item.exchange));
         const priceResults = await Promise.all(pricePromises);
 
+        if (headerEl) {
+            headerEl.style.display = 'grid';
+        }
+
         portfolio.forEach((item, index) => {
             const { price, currency } = priceResults[index];
             const krwRate = getKrwExchangeRate(currency);
@@ -4861,31 +4868,36 @@ document.addEventListener("DOMContentLoaded", () => {
 
             html += `
                 <div class="portfolio-item" data-index="${index}">
-                    <div class="portfolio-item-main">
-                        <div class="portfolio-item-left">
-                            <span class="portfolio-item-symbol">${item.symbol}</span>
-                            <span class="portfolio-item-name-exch">${item.exchange.toUpperCase()} | ${item.name}</span>
-                        </div>
-                        <div class="portfolio-item-right">
-                            <span class="portfolio-item-price-val">${formatNumber(price, currency === 'KRW' || currency === 'JPY' ? 0 : 2)} ${currency}</span>
-                            <span class="portfolio-item-krw-val" id="portfolio-item-krw-${index}">평가: ${formatNumber(totalKrwVal, 0)} 원</span>
-                        </div>
+                    <!-- 1열: 종목 정보 -->
+                    <div class="portfolio-col portfolio-col-info">
+                        <span class="portfolio-item-symbol">${item.symbol}</span>
+                        <span class="portfolio-item-name-exch" title="${item.name}">${item.name} (${item.exchange.toUpperCase()})</span>
                     </div>
-                    <div class="portfolio-item-divider"></div>
-                    <div class="portfolio-item-controls">
+                    
+                    <!-- 2열: 가격 및 평가금액 -->
+                    <div class="portfolio-col portfolio-col-pricing">
+                        <div class="price-row">
+                            <span class="label">현재가:</span>
+                            <span class="val price-val">${formatNumber(price, currency === 'KRW' || currency === 'JPY' ? 0 : 2)} ${currency}</span>
+                        </div>
+                        <div class="eval-row">
+                            <span class="label">평가액:</span>
+                            <span class="val eval-val" id="portfolio-item-krw-${index}">${formatNumber(totalKrwVal, 0)} 원</span>
+                        </div>
+                        <span class="rate-val">환율: 1 ${currency} = ${formatNumber(krwRate, 0)}원</span>
+                    </div>
+                    
+                    <!-- 3열: 수량 조절 및 삭제 -->
+                    <div class="portfolio-col portfolio-col-qty-action">
                         <div class="portfolio-qty-wrapper">
-                            <span class="portfolio-qty-label">수량</span>
-                            <div class="qty-control-container">
-                                <button class="qty-btn minus-btn" data-index="${index}">-</button>
-                                <input type="number" class="portfolio-qty-input" value="${item.quantity}" min="0" data-index="${index}">
-                                <button class="qty-btn plus-btn" data-index="${index}">+</button>
-                            </div>
+                            <button class="qty-btn minus-btn" data-index="${index}">-</button>
+                            <input type="number" class="portfolio-qty-input" value="${item.quantity}" min="0" data-index="${index}">
+                            <button class="qty-btn plus-btn" data-index="${index}">+</button>
                         </div>
                         <button class="portfolio-delete-btn" data-index="${index}">삭제</button>
                     </div>
                 </div>
             `;
-            
             item.cachedPrice = price;
             item.cachedCurrency = currency;
             item.cachedRate = krwRate;
@@ -4893,31 +4905,34 @@ document.addEventListener("DOMContentLoaded", () => {
 
         listEl.innerHTML = html;
 
-        // Bind Plus/Minus buttons logic
+        // Plus/Minus button click handlers
         listEl.querySelectorAll('.qty-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
-                const idx = parseInt(e.target.getAttribute('data-index'));
-                const isPlus = e.target.classList.contains('plus-btn');
+                e.stopPropagation();
+                const button = e.target.closest('.qty-btn');
+                if (!button) return;
+                
+                const idx = parseInt(button.getAttribute('data-index'));
+                const isPlus = button.classList.contains('plus-btn');
                 const inputEl = listEl.querySelector(`.portfolio-qty-input[data-index="${idx}"]`);
                 if (!inputEl) return;
-
-                let currentVal = parseFloat(inputEl.value) || 0;
-                let newVal = isPlus ? currentVal + 1 : currentVal - 1;
-                if (newVal < 0) newVal = 0;
-
-                inputEl.value = newVal;
-                portfolio[idx].quantity = newVal;
+                
+                let val = parseFloat(inputEl.value) || 0;
+                val = isPlus ? val + 1 : Math.max(0, val - 1);
+                
+                inputEl.value = val;
+                
+                portfolio[idx].quantity = val;
                 savePortfolio();
-
+                
                 const item = portfolio[idx];
                 if (item.cachedPrice) {
-                    const totalKrwVal = item.cachedPrice * newVal * item.cachedRate;
-                    document.getElementById(`portfolio-item-krw-${idx}`).innerText = `평가: ${formatNumber(totalKrwVal, 0)} 원`;
+                    const totalKrwVal = item.cachedPrice * val * item.cachedRate;
+                    document.getElementById(`portfolio-item-krw-${idx}`).innerText = `${formatNumber(totalKrwVal, 0)} 원`;
                 }
             });
         });
 
-        // Bind Quantity Input change listeners
         listEl.querySelectorAll('.portfolio-qty-input').forEach(input => {
             input.addEventListener('input', (e) => {
                 const idx = parseInt(e.target.getAttribute('data-index'));
@@ -4928,244 +4943,131 @@ document.addEventListener("DOMContentLoaded", () => {
                 const item = portfolio[idx];
                 if (item.cachedPrice) {
                     const totalKrwVal = item.cachedPrice * newQty * item.cachedRate;
-                    document.getElementById(`portfolio-item-krw-${idx}`).innerText = `평가: ${formatNumber(totalKrwVal, 0)} 원`;
+                    document.getElementById(`portfolio-item-krw-${idx}`).innerText = `${formatNumber(totalKrwVal, 0)} 원`;
                 }
             });
         });
 
-        // Bind Delete button listeners
         listEl.querySelectorAll('.portfolio-delete-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 const idx = parseInt(e.target.getAttribute('data-index'));
                 portfolio.splice(idx, 1);
                 savePortfolio();
                 renderPortfolioModal();
-                
-                document.getElementById('portfolio-analysis-section').classList.remove('active');
+                const backtestSec = document.getElementById('portfolio-analysis-section');
+                if (backtestSec) backtestSec.classList.remove('active');
             });
         });
     }
 
-    // Modal Control Setup
-    const modalEl = document.getElementById('portfolio-modal');
-    const myPortfolioBtn = document.getElementById('my-portfolio-btn');
-    const closeBtn1 = document.getElementById('close-portfolio-modal-btn');
-    const closeBtn2 = document.getElementById('close-portfolio-modal-footer-btn');
+    function initPortfolioModalControls() {
+        const modalEl = document.getElementById('portfolio-modal');
+        const myPortfolioBtn = document.getElementById('my-portfolio-btn');
+        const closeBtn1 = document.getElementById('close-portfolio-modal-btn');
+        const closeBtn2 = document.getElementById('close-portfolio-modal-footer-btn');
 
-    if (myPortfolioBtn && modalEl) {
-        myPortfolioBtn.addEventListener('click', () => {
-            modalEl.classList.add('active');
-            document.getElementById('portfolio-analysis-section').classList.remove('active');
-            renderPortfolioModal();
+        if (myPortfolioBtn && modalEl) {
+            myPortfolioBtn.addEventListener('click', () => {
+                modalEl.classList.add('active');
+                const backtestSec = document.getElementById('portfolio-analysis-section');
+                if (backtestSec) backtestSec.classList.remove('active');
+                renderPortfolioModal();
+            });
+        }
+
+        const closeModal = () => {
+            if (modalEl) modalEl.classList.remove('active');
+        };
+
+        if (closeBtn1) closeBtn1.addEventListener('click', closeModal);
+        if (closeBtn2) closeBtn2.addEventListener('click', closeModal);
+
+        const analyzeBtn = document.getElementById('analyze-portfolio-btn');
+        if (analyzeBtn) {
+            analyzeBtn.addEventListener('click', async () => {
+                await runPortfolioBacktest();
+            });
+        }
+
+        document.querySelectorAll('#portfolio-backtest-timeframe .time-btn').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                document.querySelectorAll('#portfolio-backtest-timeframe .time-btn').forEach(b => b.classList.remove('active'));
+                e.target.classList.add('active');
+                backtestPeriod = e.target.getAttribute('data-period');
+                await renderBacktestChartOnly();
+            });
         });
     }
 
-    const closeModal = () => {
-        if (modalEl) modalEl.classList.remove('active');
-    };
+    // === Portfolio Analysis Sub-tab Logic ===
+    let analysisPeriod = '10y';
+    let analysisSimulationSeries = [];
+    let analysisTimeSeriesChart = null;
 
-    if (closeBtn1) closeBtn1.addEventListener('click', closeModal);
-    if (closeBtn2) closeBtn2.addEventListener('click', closeModal);
+    // Helper to calculate portfolio metrics using Common Start Date backtesting
+    async function calculatePortfolioMetrics(targetData) {
+        if (!targetData || targetData.length === 0) return null;
 
-    // ── 서브 탭 전환 및 추천/분석 기능 로직 ──
-    window.switchSubTab = function(subTabId) {
-        document.querySelectorAll('.detail-sub-tabs .sub-tab-btn').forEach(btn => btn.classList.remove('active'));
-        document.querySelectorAll('.detail-subview').forEach(view => view.classList.remove('active'));
-
-        const targetBtn = document.getElementById(`sub-tab-btn-${subTabId}`);
-        if (targetBtn) targetBtn.classList.add('active');
-
-        const targetView = document.getElementById(`detail-subview-${subTabId}`);
-        if (targetView) targetView.classList.add('active');
-
-        // 서브 탭 진입 시 초기화
-        if (subTabId === 'recommended') {
-            selectRecommendedPortfolio(selectedRecPortfolioId);
-        } else if (subTabId === 'analysis') {
-            // "내 포트폴리오" 개수 갱신
-            document.getElementById('my-portfolio-status').innerText = portfolio.length + "개 종목";
-            
-            // "추천 포트폴리오" 개수 갱신
-            const recPort = JSON.parse(localStorage.getItem('recommended_portfolio_items')) || [];
-            document.getElementById('rec-portfolio-status').innerText = recPort.length > 0 ? recPort.length + "개 종목" : "선택 안 됨";
-
-            selectAnalysisTarget(selectedAnalysisTarget);
-        }
-    };
-
-    // 추천 포트폴리오 목록 선택 및 파이 차트 렌더링
-    window.selectRecommendedPortfolio = function(portfolioId) {
-        selectedRecPortfolioId = portfolioId;
-        
-        // 카드 active 갱신
-        document.querySelectorAll('#detail-subview-recommended .recommended-card').forEach(card => {
-            card.classList.remove('active');
-            card.style.borderColor = 'rgba(255, 255, 255, 0.08)';
-            card.style.background = 'rgba(255, 255, 255, 0.02)';
-        });
-        
-        const selectedCard = document.querySelector(`#detail-subview-recommended .recommended-card[data-portfolio-id="${portfolioId}"]`);
-        if (selectedCard) {
-            selectedCard.classList.add('active');
-            selectedCard.style.borderColor = 'rgba(0, 242, 254, 0.45)';
-            selectedCard.style.background = 'rgba(0, 242, 254, 0.04)';
-        }
-
-        const data = RECOMMENDED_PORTFOLIOS[portfolioId];
-        if (!data) return;
-
-        document.getElementById('selected-rec-title').innerText = data.title;
-
-        // 할당 종목 텍스트 렌더링
-        const allocationListEl = document.getElementById('rec-allocation-list');
-        allocationListEl.innerHTML = data.assets.map(asset => {
-            return `<div style="display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.03);">
-                <span style="color: #fff; font-weight: 600;">${asset.symbol}</span>
-                <span style="color: var(--text-secondary); font-size:12px; margin-left: 8px; flex: 1;">${asset.name}</span>
-                <span style="color: var(--accent); font-weight: 700;">${(asset.weight * 100).toFixed(1)}%</span>
-            </div>`;
-        }).join('');
-
-        // 차트 렌더링
-        const ctx = document.getElementById('chart-rec-pie');
-        if (!ctx) return;
-
-        if (recommendedPortfolioChart) {
-            recommendedPortfolioChart.destroy();
-        }
-
-        const cagrFloat = parseFloat(data.cagr);
-        recommendedPortfolioChart = renderDoughnutChart(ctx, data.assets, 10000000, cagrFloat, true);
-    };
-
-    // 이 포트폴리오로 시작하기 버튼 클릭 시 모달 열기
-    window.confirmCopyRecommendedPortfolio = function() {
-        const portInfo = RECOMMENDED_PORTFOLIOS[selectedRecPortfolioId];
-        if (!portInfo) return;
-
-        // 모달 텍스트 업데이트
-        const messageEl = document.getElementById('copy-confirm-message');
-        messageEl.innerHTML = `"${portInfo.title}" 포트폴리오를 복사하시겠습니까?<br><br>
-        복사 시 ⚠️주의: 기존 추천 포트폴리오가 있다면 <strong>모두 삭제</strong>되고, 총 <strong>1,000만원 기준</strong>으로 수량이 자동 계산되어 덮어씌워집니다.`;
-
-        const confirmModal = document.getElementById('portfolio-copy-confirm-modal');
-        confirmModal.classList.add('active');
-
-        // Yes 버튼 이벤트 연결 (단일 등록을 위해 onclick 재바인딩)
-        document.getElementById('btn-copy-confirm-yes').onclick = copyRecommendedPortfolio;
-    };
-
-    window.closeCopyConfirmModal = function() {
-        const confirmModal = document.getElementById('portfolio-copy-confirm-modal');
-        if (confirmModal) confirmModal.classList.remove('active');
-    };
-
-    // 추천 포트폴리오 자산 수량 계산 및 복사 수행
-    async function copyRecommendedPortfolio() {
-        const portInfo = RECOMMENDED_PORTFOLIOS[selectedRecPortfolioId];
-        if (!portInfo) return;
-
-        // 로딩 안내
-        const messageEl = document.getElementById('copy-confirm-message');
-        messageEl.innerHTML = `<span style="font-size: 24px; display:block; margin-bottom:12px;">⏳</span>포트폴리오 자산 계산 중입니다...<br>실시간 가격과 환율 정보를 수집하고 있습니다. 잠시만 기다려주세요.`;
-
-        try {
-            const usdRate = getKrwExchangeRate('USD');
-            const totalKrw = 10000000; // 1,000만원
-            const computedItems = [];
-
-            // 가격 데이터 로드
-            const pricePromises = portInfo.assets.map(asset => getStockCurrentPriceAndCurrency(asset.symbol, asset.exchange));
-            const prices = await Promise.all(pricePromises);
-
-            portInfo.assets.forEach((asset, idx) => {
-                const { price, currency } = prices[idx];
-                const assetKrwRate = getKrwExchangeRate(currency);
+        // If it is the active portfolio, recalculate weights based on current price & quantity
+        if (targetData === portfolio) {
+            try {
+                const pricePromises = portfolio.map(item => getStockCurrentPriceAndCurrency(item.symbol, item.exchange));
+                const priceResults = await Promise.all(pricePromises);
                 
-                // 원화 배정 금액
-                const allocKrw = totalKrw * asset.weight;
-                
-                // 외화 금액
-                const foreignVal = allocKrw / assetKrwRate;
-                
-                // 수량 (소수점 2자리 반올림)
-                const qty = Math.round((foreignVal / price) * 100) / 100;
-
-                computedItems.push({
-                    symbol: asset.symbol,
-                    name: asset.name,
-                    exchange: asset.exchange,
-                    quantity: qty
+                const values = portfolio.map((item, idx) => {
+                    const price = priceResults[idx] ? priceResults[idx].price : 0;
+                    const currency = priceResults[idx] ? priceResults[idx].currency : 'USD';
+                    const rate = getKrwExchangeRate(currency);
+                    const val = (price || 0) * (item.quantity || 0) * rate;
+                    return isNaN(val) ? 0 : val;
                 });
-            });
-
-            localStorage.setItem('recommended_portfolio_items', JSON.stringify(computedItems));
-            closeCopyConfirmModal();
-            alert(`"${portInfo.title}" 포트폴리오 복사가 성공적으로 완료되었습니다.`);
-            
-            // 포트폴리오 분석 탭으로 자동 이동
-            switchSubTab('analysis');
-        } catch (err) {
-            console.error(err);
-            alert('자산 가격 정보를 불러오는 도중 오류가 발생했습니다. 다시 시도해 주세요.');
-            closeCopyConfirmModal();
+                
+                const totalVal = values.reduce((sum, v) => sum + v, 0);
+                portfolio.forEach((item, idx) => {
+                    item.weight = totalVal > 0 ? (values[idx] / totalVal) * 100 : (100 / portfolio.length);
+                });
+                savePortfolio();
+            } catch (e) {
+                console.warn("Failed to dynamically recalculate portfolio weights:", e);
+            }
         }
-    }
 
-    // 10개년 백테스팅 시뮬레이터 엔진 (CAGR, MDD 산출)
-    async function runPortfolioSimulation(portfolioData, isRecommended = false) {
-        if (!portfolioData || portfolioData.length === 0) return null;
-
-        // 주단위 역사적 데이터 로드
-        const historyPromises = portfolioData.map(item => fetchHistorical10yData(item.symbol, item.exchange));
+        // Load historical data for all tickers
+        const historyPromises = targetData.map(item => fetchHistorical10yData(item.symbol, item.exchange));
         const historicalResults = await Promise.all(historyPromises);
 
         const now = Date.now();
         const weekMs = 7 * 24 * 60 * 60 * 1000;
-        const steps = 520; // 10년 (주단위)
-        
+
+        // 1. Calculate Common Start Date (latest start date among all tickers)
+        let latestStartDate = 0;
+        historicalResults.forEach(res => {
+            if (res.history && res.history.length > 0) {
+                if (res.history[0].time > latestStartDate) {
+                    latestStartDate = res.history[0].time;
+                }
+            }
+        });
+
+        if (latestStartDate === 0) {
+            latestStartDate = now - 10 * 365 * 24 * 60 * 60 * 1000;
+        }
+
+        // 2. Build timeGrid starting from latestStartDate
+        const availableMs = now - latestStartDate;
+        const steps = Math.min(520, Math.floor(availableMs / weekMs));
         const timeGrid = [];
         for (let i = steps; i >= 0; i--) {
             timeGrid.push(now - (i * weekMs));
         }
 
-        // 시작 시점의 가격
-        const startPrices = portfolioData.map((item, idx) => {
-            const history = historicalResults[idx].history;
-            return history.length > 0 ? history[0].price : 0;
-        });
-
-        // 1,000만원 기준 시작 시점의 자산 수량 계산
-        const totalKrw = 10000000;
-        const quantities = portfolioData.map((item, idx) => {
-            if (isRecommended) {
-                // 추천 포트폴리오는 비중대로 시작 시점에 1,000만원어치를 산 수량으로 시뮬레이션
-                const weightObj = RECOMMENDED_PORTFOLIOS[selectedRecPortfolioId].assets.find(a => a.symbol === item.symbol);
-                const weight = weightObj ? weightObj.weight : 0;
-                
-                const assetCurrency = historicalResults[idx].currency;
-                // 10년 전 원달러 환율 대략 1100~1200 보정
-                const assetKrwRate = getKrwExchangeRate(assetCurrency) * 0.88; 
-                
-                const allocKrw = totalKrw * weight;
-                const startPrice = startPrices[idx];
-                if (startPrice <= 0) return 0;
-                return (allocKrw / assetKrwRate) / startPrice;
-            } else {
-                // 내 포트폴리오는 현재 수량으로 10년 동안 들고 있었다고 시뮬레이션
-                return item.quantity;
-            }
-        });
-
-        // 시계열 가치 빌딩
-        const series = timeGrid.map(t => {
-            let totalValKrw = 0;
-
-            portfolioData.forEach((item, index) => {
+        // 3. Compute portfolio value series
+        const simulationSeries = timeGrid.map(t => {
+            let totalValueKrw = 0;
+            targetData.forEach((item, index) => {
                 const { history, currency } = historicalResults[index];
-                
                 let priceAtT = 0;
-                if (history.length > 0) {
+                if (history && history.length > 0) {
                     if (t < history[0].time) {
                         priceAtT = 0;
                     } else {
@@ -5180,421 +5082,407 @@ document.addEventListener("DOMContentLoaded", () => {
                 if (currency !== 'KRW') {
                     const currentRate = getKrwExchangeRate(currency);
                     const yearsAgo = (now - t) / (365 * 24 * 60 * 60 * 1000);
-                    const historicalWalk = 1 + (Math.sin(yearsAgo) * 0.08); // 환율 변동성 가미
+                    const historicalWalk = 1 + (Math.sin(yearsAgo) * 0.08);
                     rateAtT = currentRate * historicalWalk;
                 }
 
-                totalValKrw += priceAtT * quantities[index] * rateAtT;
+                totalValueKrw += priceAtT * item.weight * 1000 * rateAtT;
             });
 
-            return { x: t, y: totalValKrw };
+            return { x: t, y: totalValueKrw };
         });
 
-        // 최초 유효 가치 검색 (IPO 이전 시점 회피)
-        let startIndex = 0;
-        while (startIndex < series.length && series[startIndex].y <= 0) {
-            startIndex++;
+        // 4. Calculate metrics
+        const startVal = simulationSeries[0].y;
+        const endVal = simulationSeries[simulationSeries.length - 1].y;
+
+        let totalReturn = 0;
+        let cagr = 0;
+        let mdd = 0;
+        const years = (now - latestStartDate) / (365 * 24 * 60 * 60 * 1000);
+
+        if (startVal > 0) {
+            totalReturn = ((endVal - startVal) / startVal) * 100;
+            cagr = years > 0.1 ? (Math.pow(endVal / startVal, 1 / years) - 1) * 100 : totalReturn;
+
+            let maxVal = -Infinity;
+            let maxDrawdown = 0;
+            simulationSeries.forEach(d => {
+                if (d.y > maxVal) maxVal = d.y;
+                const dd = maxVal > 0 ? (maxVal - d.y) / maxVal : 0;
+                if (dd > maxDrawdown) maxDrawdown = dd;
+            });
+            mdd = maxDrawdown * 100;
+
+            // Normalize to 1,000만원 starting value
+            const scaleFactor = 10000000 / startVal;
+            simulationSeries.forEach(d => {
+                d.y = d.y * scaleFactor;
+            });
         }
 
-        if (startIndex >= series.length) return null;
-
-        const startVal = series[startIndex].y;
-        const endVal = series[series.length - 1].y;
-
-        const totalReturn = startVal > 0 ? ((endVal - startVal) / startVal) * 100 : 0;
-        const durationYears = (series[series.length - 1].x - series[startIndex].x) / (365 * 24 * 60 * 60 * 1000);
-        const cagr = (startVal > 0 && endVal > 0 && durationYears > 0) ? (Math.pow(endVal / startVal, 1 / durationYears) - 1) * 100 : 0;
-
-        // MDD 계산
-        let peak = 0;
-        let maxDrawdown = 0;
-        for (let i = startIndex; i < series.length; i++) {
-            const val = series[i].y;
-            if (val > peak) peak = val;
-            if (peak > 0) {
-                const dd = (val - peak) / peak * 100;
-                if (dd < maxDrawdown) maxDrawdown = dd;
-            }
-        }
-
-        // 비중 산출
-        const startWeights = [];
-        const currentWeights = [];
-        let startSum = 0;
-        let currentSum = 0;
-
-        portfolioData.forEach((item, idx) => {
-            const startPrice = startPrices[idx];
-            const startCurrency = historicalResults[idx].currency;
-            const startRate = getKrwExchangeRate(startCurrency) * 0.88;
-            const startItemVal = startPrice * quantities[idx] * startRate;
-            startSum += startItemVal;
-            startWeights.push({ symbol: item.symbol, val: startItemVal });
-
-            const history = historicalResults[idx].history;
-            const currentPrice = history.length > 0 ? history[history.length - 1].price : 0;
-            const currentCurrency = historicalResults[idx].currency;
-            const currentRate = getKrwExchangeRate(currentCurrency);
-            const currentItemVal = currentPrice * quantities[idx] * currentRate;
-            currentSum += currentItemVal;
-            currentWeights.push({ symbol: item.symbol, val: currentItemVal });
-        });
-
-        const startWeightsNorm = startWeights.map(w => ({
-            symbol: w.symbol,
-            weight: startSum > 0 ? w.val / startSum : 0
-        }));
-
-        const currentWeightsNorm = currentWeights.map(w => ({
-            symbol: w.symbol,
-            weight: currentSum > 0 ? w.val / currentSum : 0
-        }));
+        const startUsdKrwRate = getKrwExchangeRate('USD') * (1 + Math.sin(10) * 0.08);
+        const endUsdKrwRate = getKrwExchangeRate('USD');
+        const startKrw = 10000000;
+        const startUsd = startKrw / startUsdKrwRate;
+        const endKrw = endVal * (startVal > 0 ? (10000000 / startVal) : 1);
+        const endUsd = endKrw / endUsdKrwRate;
+        const endKrwHedged = endUsd * startUsdKrwRate;
+        const exchangeEffect = endKrw - endKrwHedged;
 
         return {
-            series,
+            simulationSeries,
             totalReturn,
             cagr,
-            mdd: maxDrawdown,
-            startWeights: startWeightsNorm,
-            currentWeights: currentWeightsNorm
+            mdd,
+            years,
+            latestStartDate,
+            startUsdKrwRate,
+            endUsdKrwRate,
+            startKrw,
+            startUsd,
+            endKrw,
+            endUsd,
+            endKrwHedged,
+            exchangeEffect
         };
     }
 
-    // 포트폴리오 분석 대상 로드 및 렌더링
-    window.selectAnalysisTarget = async function(target) {
-        selectedAnalysisTarget = target;
+    async function runPortfolioAnalysis() {
+        const targetData = selectedAnalysisTarget === 'my' ? portfolio : selectedRecPortfolio.items;
         
-        // 아이콘 선택 active 갱신
-        document.getElementById('btn-select-my-portfolio').classList.remove('active');
-        document.getElementById('btn-select-rec-portfolio').classList.remove('active');
-        document.getElementById('btn-select-my-portfolio').style.borderColor = 'rgba(255,255,255,0.08)';
-        document.getElementById('btn-select-my-portfolio').style.background = 'rgba(255,255,255,0.02)';
-        document.getElementById('btn-select-rec-portfolio').style.borderColor = 'rgba(255,255,255,0.08)';
-        document.getElementById('btn-select-rec-portfolio').style.background = 'rgba(255,255,255,0.02)';
-
-        const activeCard = document.getElementById(target === 'my' ? 'btn-select-my-portfolio' : 'btn-select-rec-portfolio');
-        activeCard.classList.add('active');
-        activeCard.style.borderColor = 'rgba(0, 242, 254, 0.45)';
-        activeCard.style.background = 'rgba(0, 242, 254, 0.04)';
-
-        // 데이터 획득
-        let targetData = [];
-        if (target === 'my') {
-            targetData = portfolio;
-        } else {
-            targetData = JSON.parse(localStorage.getItem('recommended_portfolio_items')) || [];
-        }
-
         const metricsGrid = document.getElementById('analysis-metrics-grid');
         const chartCard = document.getElementById('analysis-chart-card');
+        const exDetailCard = document.getElementById('analysis-exchange-detail-card');
         const weightsRow = document.getElementById('analysis-weights-row');
-        const weightsDesc = document.getElementById('analysis-weights-description');
 
-        if (targetData.length === 0) {
-            metricsGrid.style.display = 'none';
-            chartCard.style.display = 'none';
-            weightsRow.style.display = 'none';
-            weightsDesc.style.display = 'none';
+        if (!targetData || targetData.length === 0) {
+            // 데이터가 없으면 비우고 감춤
+            if (metricsGrid) metricsGrid.style.display = 'none';
+            if (chartCard) chartCard.style.display = 'none';
+            if (exDetailCard) exDetailCard.style.display = 'none';
+            if (weightsRow) weightsRow.style.display = 'none';
             
-            // 데이터 없음 피드백
-            const listEl = document.getElementById('detail-subview-analysis');
-            let infoEl = document.getElementById('analysis-empty-info');
-            if (!infoEl) {
-                infoEl = document.createElement('div');
-                infoEl.id = 'analysis-empty-info';
-                infoEl.style.cssText = 'text-align: center; color: var(--text-muted); padding: 40px 20px; font-size:14px;';
-                listEl.insertBefore(infoEl, document.getElementById('btn-compare-portfolios').parentNode);
-            }
-            infoEl.style.display = 'block';
-            infoEl.innerHTML = target === 'my' 
-                ? '내 포트폴리오에 등록된 종목이 없습니다. 주식검색 탭에서 종목을 검색한 후 "➕ 포트폴리오 담기" 버튼을 눌러주세요.'
-                : '선택된 추천 포트폴리오가 없습니다. 추천 포트폴리오 탭에서 포트폴리오를 선택하고 "💼 이 포트폴리오로 시작하기" 버튼을 눌러주세요.';
+            const myStatus = document.getElementById('my-portfolio-status');
+            if (myStatus) myStatus.innerText = "0개 종목";
             return;
         }
 
-        // 비어있는 알림 숨김
-        const infoEl = document.getElementById('analysis-empty-info');
-        if (infoEl) infoEl.style.display = 'none';
+        // 컨테이너 보이기
+        if (metricsGrid) metricsGrid.style.display = 'grid';
+        if (chartCard) chartCard.style.display = 'block';
+        if (exDetailCard) exDetailCard.style.display = 'block';
+        if (weightsRow) weightsRow.style.display = 'grid';
 
-        // 분석 메트릭 카드 및 차트 노출
-        metricsGrid.style.display = 'grid';
-        chartCard.style.display = 'block';
-        weightsRow.style.display = 'grid';
-        weightsDesc.style.display = 'block';
+        // 분석 상태 레이블 갱신
+        const myStatus = document.getElementById('my-portfolio-status');
+        if (myStatus) {
+            myStatus.innerText = `${portfolio.length}개 종목`;
+        }
+        const recStatus = document.getElementById('rec-portfolio-status');
+        if (recStatus) {
+            recStatus.innerText = selectedRecPortfolio.name;
+        }
 
-        document.getElementById('analysis-chart-title').innerText = target === 'my' ? '내 포트폴리오 가치 (KRW)' : '추천 포트폴리오 가치 (KRW)';
+        const metrics = await calculatePortfolioMetrics(targetData);
+        if (!metrics) return;
 
-        // 로딩 텍스트 표시
-        document.getElementById('analysis-metric-return').innerText = '연산 중...';
-        document.getElementById('analysis-metric-cagr').innerText = '연산 중...';
-        document.getElementById('analysis-metric-mdd').innerText = '연산 중...';
+        analysisSimulationSeries = metrics.simulationSeries;
 
-        const result = await runPortfolioSimulation(targetData, target === 'rec');
-        if (!result) return;
+        // 최근 상장 종목 포함 여부에 따른 데이터 제한 알림 처리
+        const noticeEl = document.getElementById('analysis-data-notice');
+        const noticeTextEl = document.getElementById('analysis-data-notice-text');
+        const now = Date.now();
 
-        // 메트릭 바인딩
-        document.getElementById('analysis-metric-return').innerText = result.totalReturn.toFixed(1) + '%';
-        document.getElementById('analysis-metric-cagr').innerText = result.cagr.toFixed(1) + '%';
-        document.getElementById('analysis-metric-mdd').innerText = result.mdd.toFixed(1) + '%';
+        let isConstrained = false;
+        let constrainedTickerNames = [];
 
-        // 1. 시계열 가치 선 차트 렌더링
-        const timeCtx = document.getElementById('chart-analysis-time-series');
-        if (analysisTimeSeriesChart) analysisTimeSeriesChart.destroy();
+        // Check if any ticker started trading less than 9.5 years ago
+        for (let i = 0; i < targetData.length; i++) {
+            const item = targetData[i];
+            const result = await fetchHistorical10yData(item.symbol, item.exchange);
+            if (result.history && result.history.length > 0) {
+                const firstTime = result.history[0].time;
+                if (firstTime > now - 9.5 * 365 * 24 * 60 * 60 * 1000) {
+                    isConstrained = true;
+                    constrainedTickerNames.push(`${item.name || item.symbol} (${item.symbol})`);
+                }
+            }
+        }
 
-        analysisTimeSeriesChart = new Chart(timeCtx.getContext('2d'), {
-            type: 'line',
-            data: {
-                datasets: [{
-                    label: target === 'my' ? '내 포트폴리오' : '추천 포트폴리오',
-                    data: result.series,
-                    borderColor: '#00f2fe',
-                    backgroundColor: 'rgba(0, 242, 254, 0.05)',
-                    borderWidth: 2,
-                    fill: true,
-                    pointRadius: 0,
-                    pointHoverRadius: 6,
-                    tension: 0.2
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: { display: false },
-                    tooltip: {
-                        callbacks: {
-                            label: function(context) {
-                                return ` 평가금액: ${Math.round(context.parsed.y).toLocaleString()} 원`;
-                            }
+        if (isConstrained && noticeEl && noticeTextEl) {
+            const durationMs = now - metrics.latestStartDate;
+            const durationYears = durationMs / (365 * 24 * 60 * 60 * 1000);
+            let durationText = '';
+            if (durationYears >= 1) {
+                durationText = `${durationYears.toFixed(1)}년`;
+            } else {
+                durationText = `${Math.round(durationMs / (30 * 24 * 60 * 60 * 1000))}개월`;
+            }
+            noticeTextEl.innerText = `최근 상장된 종목(${constrainedTickerNames.join(', ')})이 포함되어 분석 기간이 약 ${durationText}로 단축되었습니다. 공통 상장 기간 기준 분석 결과를 표시합니다.`;
+            noticeEl.style.display = 'flex';
+        } else if (noticeEl) {
+            noticeEl.style.display = 'none';
+        }
+
+        // 성적 메트릭 UI 업데이트
+        const returnEl = document.getElementById('analysis-metric-return');
+        const cagrEl = document.getElementById('analysis-metric-cagr');
+        const mddEl = document.getElementById('analysis-metric-mdd');
+
+        if (returnEl) {
+            returnEl.innerText = `${metrics.totalReturn >= 0 ? '+' : ''}${metrics.totalReturn.toFixed(1)}%`;
+            returnEl.style.color = metrics.totalReturn >= 0 ? 'var(--bullish)' : 'var(--bearish)';
+        }
+        if (cagrEl) {
+            if (metrics.years >= 0.95) {
+                cagrEl.innerText = `${metrics.cagr >= 0 ? '+' : ''}${metrics.cagr.toFixed(1)}%`;
+                cagrEl.style.color = metrics.cagr >= 0 ? 'var(--bullish)' : 'var(--bearish)';
+            } else {
+                cagrEl.innerText = `N/A (1년 미만)`;
+                cagrEl.style.color = 'var(--text-muted)';
+            }
+        }
+        if (mddEl) {
+            mddEl.innerText = `-${metrics.mdd.toFixed(1)}%`;
+            mddEl.style.color = 'var(--bearish)';
+        }
+
+        // 환율 요약 UI 업데이트
+        const exStartKrwEl = document.getElementById('analysis-ex-start-krw');
+        const exStartDetailsEl = document.getElementById('analysis-ex-start-details');
+        const exEndKrwEl = document.getElementById('analysis-ex-end-krw');
+        const exEndDetailsEl = document.getElementById('analysis-ex-end-details');
+        const exHedgedKrwEl = document.getElementById('analysis-ex-hedged-krw');
+        const exEffectKrwEl = document.getElementById('analysis-ex-effect-krw');
+
+        if (exStartKrwEl) exStartKrwEl.innerText = `${Math.round(metrics.startKrw).toLocaleString()} 원`;
+        if (exStartDetailsEl) exStartDetailsEl.innerText = `$${Math.round(metrics.startUsd).toLocaleString()} USD (당시 환율: ${Math.round(metrics.startUsdKrwRate)}원)`;
+        if (exEndKrwEl) exEndKrwEl.innerText = `${Math.round(metrics.endKrw).toLocaleString()} 원`;
+        if (exEndDetailsEl) exEndDetailsEl.innerText = `$${Math.round(metrics.endUsd).toLocaleString()} USD (현재 환율: ${Math.round(metrics.endUsdKrwRate)}원)`;
+        if (exHedgedKrwEl) exHedgedKrwEl.innerText = `${Math.round(metrics.endKrwHedged).toLocaleString()} 원`;
+        
+        if (exEffectKrwEl) {
+            const effectSign = metrics.exchangeEffect >= 0 ? '+' : '';
+            const effectPct = ((metrics.endKrw - metrics.endKrwHedged) / metrics.endKrwHedged * 100);
+            exEffectKrwEl.innerText = `${effectSign}${Math.round(metrics.exchangeEffect).toLocaleString()} 원 (${effectSign}${effectPct.toFixed(1)}%)`;
+            exEffectKrwEl.style.color = metrics.exchangeEffect >= 0 ? 'var(--bullish)' : 'var(--bearish)';
+        }
+
+        await renderAnalysisChartOnly();
+        renderPortfolioWeightCharts();
+    }
+
+    async function loadTickerDetail(symbol, name, exchange, period = currentDetailPeriod, useCached = false) {
+        currentTickerState = { symbol, name, exchange };
+        currentDetailPeriod = period;
+        
+        window.switchTab('detail');
+        
+        const titleEl = document.getElementById('detail-title');
+        const exchangeBadge = document.getElementById('detail-exchange');
+        const priceBox = document.getElementById('detail-price-box');
+        const loadingIndicator = document.getElementById('detail-loading-overlay');
+        const chartWrapper = document.getElementById('detail-chart-wrapper');
+        const priceEl = document.getElementById('detail-price');
+        const changeEl = document.getElementById('detail-change');
+        
+        const detailMainLayout = document.getElementById('detail-main-layout');
+        if (detailMainLayout) {
+            detailMainLayout.style.display = 'grid';
+        }
+ 
+        titleEl.innerText = `${name} (${symbol})`;
+        exchangeBadge.innerText = exchange.toUpperCase();
+        
+        // Show Add to Portfolio button when stock is loaded
+        updatePortfolioButtonState(symbol);
+        const addBtn = document.getElementById('add-to-portfolio-btn');
+        if (addBtn) {
+            addBtn.style.display = 'inline-flex';
+            addBtn.onclick = (e) => {
+                e.stopPropagation();
+                
+                const exists = portfolio.some(item => item.symbol.toUpperCase() === symbol.toUpperCase());
+                if (exists) {
+                    // Remove from portfolio (toggle behavior)
+                    const index = portfolio.findIndex(item => item.symbol.toUpperCase() === symbol.toUpperCase());
+                    if (index !== -1) {
+                        portfolio.splice(index, 1);
+                        savePortfolio();
+                        showToast(`${name} 종목을 포트폴리오에서 제외했습니다.`, 'error');
+                        
+                        // If portfolio modal is open, re-render it
+                        const modalEl = document.getElementById('portfolio-modal');
+                        if (modalEl && modalEl.classList.contains('active')) {
+                            renderPortfolioModal();
                         }
                     }
-                },
-                scales: {
-                    x: {
-                        type: 'time',
-                        time: { unit: 'year', displayFormats: { year: 'yyyy' } },
-                        grid: { color: 'rgba(255, 255, 255, 0.03)' }
-                    },
-                    y: {
-                        grid: { color: 'rgba(255, 255, 255, 0.05)' },
-                        ticks: { callback: function(value) { return (value / 10000).toLocaleString() + '만'; } }
-                    }
-                }
-            }
-        });
-
-        // 2. 시작 시점 비중 차트
-        const startCtx = document.getElementById('chart-weight-start');
-        if (weightStartChart) weightStartChart.destroy();
-        weightStartChart = renderDoughnutChart(startCtx, result.startWeights, 10000000, 0);
-
-        // 3. 현재 시점 비중 차트
-        const currentCtx = document.getElementById('chart-weight-current');
-        if (weightCurrentChart) weightCurrentChart.destroy();
-        const endVal = result.series[result.series.length - 1].y;
-        weightCurrentChart = renderDoughnutChart(currentCtx, result.currentWeights, endVal, result.totalReturn);
-    };
-
-    // 도넛 차트 렌더링용 헬퍼 함수
-    function renderDoughnutChart(ctx, weightsData, totalValue = null, totalReturn = null, isCagr = false) {
-        if (!ctx) return null;
-        const labels = weightsData.map(w => w.symbol);
-        const data = weightsData.map(w => (w.weight * 100).toFixed(1));
-        const colors = ['#00f2fe', '#c084fc', '#fbbf24', '#f87171', '#34d399'].slice(0, weightsData.length);
-
-        // 중앙 텍스트 플러그인 정의
-        const centerTextPlugin = {
-            id: 'centerText',
-            beforeDraw: function(chart) {
-                if (chart.config.options.plugins.centerText) {
-                    const ctxCanvas = chart.ctx;
-                    const centerConfig = chart.config.options.plugins.centerText;
-                    
-                    const fontStyle = 'Inter, -apple-system, Malgun Gothic, sans-serif';
-                    const txtVal = centerConfig.value || '';
-                    const txtLabel = centerConfig.label || '';
-                    const txtSub = centerConfig.sub || '';
-                    const subColor = centerConfig.subColor || '#94a3b8';
-                    
-                    const centerX = (chart.chartArea.left + chart.chartArea.right) / 2;
-                    const centerY = (chart.chartArea.top + chart.chartArea.bottom) / 2;
-                    
-                    ctxCanvas.save();
-                    
-                    // 1. 라벨
-                    if (txtLabel) {
-                        ctxCanvas.font = `600 10px ${fontStyle}`;
-                        ctxCanvas.fillStyle = 'rgba(148, 163, 184, 0.8)';
-                        ctxCanvas.textAlign = 'center';
-                        ctxCanvas.textBaseline = 'middle';
-                        ctxCanvas.fillText(txtLabel, centerX, centerY - 21);
-                    }
-                    
-                    // 2. 값
-                    if (txtVal) {
-                        ctxCanvas.font = `bold 16px ${fontStyle}`;
-                        ctxCanvas.fillStyle = '#ffffff';
-                        ctxCanvas.textAlign = 'center';
-                        ctxCanvas.textBaseline = 'middle';
-                        ctxCanvas.fillText(txtVal, centerX, centerY + 1);
-                    }
-                    
-                    // 3. 서브 텍스트 (수익률)
-                    if (txtSub) {
-                        ctxCanvas.font = `700 11px ${fontStyle}`;
-                        ctxCanvas.fillStyle = subColor;
-                        ctxCanvas.textAlign = 'center';
-                        ctxCanvas.textBaseline = 'middle';
-                        ctxCanvas.fillText(txtSub, centerX, centerY + 22);
-                    }
-                    
-                    ctxCanvas.restore();
-                }
-            }
-        };
-
-        let centerTextConfig = null;
-        if (totalValue !== null) {
-            const valStr = (Math.round(totalValue / 10000)).toLocaleString() + '만 원';
-            let labelStr = '최종 자산';
-            if (totalReturn === 0 && !isCagr) {
-                labelStr = '시작 자산';
-            }
-            
-            let subStr = '';
-            let subColor = '#94a3b8';
-            if (totalReturn !== null) {
-                if (isCagr) {
-                    subStr = `▲ 연 ${totalReturn}%`;
-                    subColor = '#ef4444';
-                } else if (totalReturn > 0) {
-                    subStr = `▲ +${totalReturn.toFixed(1)}%`;
-                    subColor = '#ef4444';
-                } else if (totalReturn < 0) {
-                    subStr = `▼ ${totalReturn.toFixed(1)}%`;
-                    subColor = '#3b82f6';
                 } else {
-                    subStr = '0.0%';
-                    subColor = '#94a3b8';
+                    // Add to portfolio
+                    addToPortfolio(symbol, name, exchange);
                 }
-            }
-            
-            centerTextConfig = {
-                label: labelStr,
-                value: valStr,
-                sub: subStr,
-                subColor: subColor
             };
         }
-
-        const chartConfig = {
-            type: 'doughnut',
-            data: {
-                labels: labels,
-                datasets: [{
-                    data: data,
-                    backgroundColor: colors,
-                    borderColor: 'rgba(13, 20, 38, 0.6)',
-                    borderWidth: 1.5
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                cutout: '72%',
-                plugins: {
-                    legend: {
-                        position: 'bottom',
-                        labels: { 
-                            color: '#94a3b8', 
-                            boxWidth: 8,
-                            padding: 8,
-                            font: { size: 9.5, weight: '600' } 
-                        }
-                    }
-                }
-            },
-            plugins: []
-        };
-
-        if (centerTextConfig) {
-            chartConfig.options.plugins.centerText = centerTextConfig;
-            chartConfig.plugins.push(centerTextPlugin);
-        }
-
-        return new Chart(ctx.getContext('2d'), chartConfig);
-    }
-
-    // 포트폴리오 비교하기
-    window.togglePortfolioComparison = async function() {
-        const compPanel = document.getElementById('comparison-results-panel');
-        if (!compPanel) return;
-
-        if (compPanel.style.display === 'block') {
-            compPanel.style.display = 'none';
-            return;
-        }
-
-        const recPort = JSON.parse(localStorage.getItem('recommended_portfolio_items')) || [];
-        if (portfolio.length === 0 || recPort.length === 0) {
-            alert('비교를 수행하려면 내 포트폴리오와 추천 포트폴리오 모두에 자산이 구성되어 있어야 합니다.');
-            return;
-        }
-
-        compPanel.style.display = 'block';
-
-        // 내 포트폴리오 시뮬레이션
-        const myResult = await runPortfolioSimulation(portfolio, false);
-        // 추천 포트폴리오 시뮬레이션
-        const recResult = await runPortfolioSimulation(recPort, true);
-
-        if (!myResult || !recResult) return;
-
-        // 메트릭 바인딩
-        document.getElementById('comp-my-return').innerText = myResult.totalReturn.toFixed(1) + '%';
-        document.getElementById('comp-my-cagr').innerText = myResult.cagr.toFixed(1) + '%';
-        document.getElementById('comp-my-mdd').innerText = myResult.mdd.toFixed(1) + '%';
-
-        document.getElementById('comp-rec-return').innerText = recResult.totalReturn.toFixed(1) + '%';
-        document.getElementById('comp-rec-cagr').innerText = recResult.cagr.toFixed(1) + '%';
-        document.getElementById('comp-rec-mdd').innerText = recResult.mdd.toFixed(1) + '%';
-
-        // 1. 내 포트폴리오 비중 차트
-        const myCtx = document.getElementById('chart-comp-my-pie');
-        if (compMyPieChart) compMyPieChart.destroy();
-        const myEndVal = myResult.series[myResult.series.length - 1].y;
-        compMyPieChart = renderDoughnutChart(myCtx, myResult.currentWeights, myEndVal, myResult.totalReturn);
-
-        // 2. 추천 포트폴리오 비중 차트
-        const recCtx = document.getElementById('chart-comp-rec-pie');
-        if (compRecPieChart) compRecPieChart.destroy();
-        const recEndVal = recResult.series[recResult.series.length - 1].y;
-        compRecPieChart = renderDoughnutChart(recCtx, recResult.currentWeights, recEndVal, recResult.totalReturn);
         
-        // 스크롤 이동
-        compPanel.scrollIntoView({ behavior: 'smooth' });
-    };
 
-    // 10-Year Backtesting / Tracking Simulation
-    const analyzeBtn = document.getElementById('analyze-portfolio-btn');
-    let backtestPeriod = '5y';
-    let simulationSeries = []; // Contains date strings and consolidated KRW portfolio values
-
-    if (analyzeBtn) {
-        analyzeBtn.addEventListener('click', async () => {
-            await runPortfolioBacktest();
-        });
+        
+        if (loadingIndicator) {
+            loadingIndicator.style.display = 'flex';
+        }
+        
+        let mockConfig = null;
+        for (const ex in tickerMockData) {
+            const found = tickerMockData[ex].find(s => s.symbol === symbol.toUpperCase());
+            if (found) {
+                mockConfig = found;
+                break;
+            }
+        }
+        const isMockStock = (symbol.toUpperCase() === 'SPCX');
+ 
+        if (isMockStock) {
+            const listingDate = (mockConfig && mockConfig.listingDate) || '2025-12-01';
+            const validData = generateMockHistoryForTicker(symbol, period, { openingPrice: 25.0, listingDate: listingDate });
+            const currentPrice = validData[validData.length - 1].c;
+            const netChange = (currentPrice - validData[0].c);
+            
+            if (loadingIndicator) loadingIndicator.style.display = 'none';
+            priceBox.style.display = 'block';
+            priceEl.innerText = `${formatNumber(currentPrice, 2)} USD`;
+            
+            renderDetailChart(validData, netChange >= 0, period);
+            generateMockConsensus(currentPrice, 'USD', exchange);
+            renderRelatedNews(symbol, name);
+            return;
+        }
+ 
+        let yahooSymbol = symbol;
+        if (exchange === 'kospi') yahooSymbol = symbol + '.KS';
+        else if (exchange === 'kosdaq') yahooSymbol = symbol + '.KQ';
+        else if (exchange === 'japan') yahooSymbol = symbol + '.T';
+ 
+        const periodConfig = {
+            '5y': { range: '5y', interval: '1wk' },
+            '3y': { range: '5y', interval: '1wk' },
+            '1y': { range: '1y', interval: '1d' },
+            '6mo': { range: '6mo', interval: '1d' },
+            '3mo': { range: '3mo', interval: '1d' },
+            '1mo': { range: '1mo', interval: '1d' },
+            '1wk': { range: '5d', interval: '1h' },
+            '1d': { range: '1d', interval: '15m' },
+            '1h': { range: '1d', interval: '5m' }
+        };
+        const pConf = periodConfig[period] || periodConfig['5y'];
+ 
+        try {
+            const url = `https://query1.finance.yahoo.com/v8/finance/chart/${yahooSymbol}?interval=${pConf.interval}&range=${pConf.range}`;
+            const json = await fetchWithProxyFallback(url);
+            const result = json.chart.result[0];
+            
+            const currentPrice = result.meta.regularMarketPrice;
+            const currency = result.meta.currency;
+            
+            let timestamps = result.timestamp || [];
+            let closePrices = result.indicators.quote[0].close || [];
+            
+            const validData = timestamps.map((ts, i) => ({
+                x: ts * 1000,
+                o: result.indicators.quote[0].open[i] || closePrices[i],
+                h: result.indicators.quote[0].high[i] || closePrices[i],
+                l: result.indicators.quote[0].low[i] || closePrices[i],
+                c: closePrices[i]
+            }));
+ 
+            if (loadingIndicator) loadingIndicator.style.display = 'none';
+            priceBox.style.display = 'block';
+            priceEl.innerText = `${formatNumber(currentPrice, 2)} ${currency}`;
+            
+            let netChange = 0;
+            if (validData.length > 0) {
+                netChange = validData[validData.length - 1].c - validData[0].c;
+            }
+            
+            renderDetailChart(validData, netChange >= 0, period);
+            generateMockConsensus(currentPrice, currency, exchange);
+            renderRelatedNews(symbol, name);
+        } catch (err) {
+            console.error(err);
+            if (loadingIndicator) loadingIndicator.style.display = 'none';
+            
+            const fallbackPriceAndCurr = await getStockCurrentPriceAndCurrency(symbol, exchange);
+            const currentPrice = fallbackPriceAndCurr.price;
+            const currency = fallbackPriceAndCurr.currency;
+            
+            priceBox.style.display = 'block';
+            priceEl.innerText = `${formatNumber(currentPrice, 2)} ${currency}`;
+            
+            const listingDate = (mockConfig && mockConfig.listingDate) || (symbol.toUpperCase() === 'SPCX' ? '2025-12-01' : null);
+            const placeholderData = generateMockHistoryForTicker(symbol, period, { openingPrice: currentPrice, listingDate: listingDate });
+            
+            renderDetailChart(placeholderData, true, period);
+            generateMockConsensus(currentPrice, currency, exchange);
+            renderRelatedNews(symbol, name);
+        }
     }
+    window.loadTickerDetail = loadTickerDetail;
 
-    // Bind backtest timeframe buttons
-    document.querySelectorAll('#portfolio-backtest-timeframe .time-btn').forEach(btn => {
-        btn.addEventListener('click', async (e) => {
-            document.querySelectorAll('#portfolio-backtest-timeframe .time-btn').forEach(b => b.classList.remove('active'));
-            e.target.classList.add('active');
-            backtestPeriod = e.target.getAttribute('data-period');
-            await renderBacktestChartOnly();
-        });
-    });
+    // [..rest of the code..]
+    
+    async function getStockCurrentPriceAndCurrency(symbol, exchange) {
+        let yahooSymbol = symbol;
+        if (exchange === 'kospi') yahooSymbol = symbol + '.KS';
+        else if (exchange === 'kosdaq') yahooSymbol = symbol + '.KQ';
+        else if (exchange === 'japan') yahooSymbol = symbol + '.T';
+
+        try {
+            const url = `https://query1.finance.yahoo.com/v8/finance/chart/${yahooSymbol}?interval=1d&range=1d`;
+            const json = await fetchWithProxyFallback(url);
+            const result = json.chart.result[0];
+            const price = result.meta.regularMarketPrice;
+            const currency = result.meta.currency;
+            if (price === undefined || price === null || isNaN(price) || price <= 0) {
+                throw new Error("Invalid price data");
+            }
+            return { price, currency };
+        } catch (e) {
+            console.warn(`Failed to fetch current price for ${symbol}:`, e);
+            // Fallback pricing registry to prevent crashes
+            const upperSymbol = symbol.toUpperCase();
+            const fallbackRegistry = {
+                'VTI': { price: 265.0, currency: 'USD' },
+                'BND': { price: 72.5, currency: 'USD' },
+                'SPY': { price: 530.0, currency: 'USD' },
+                'TLT': { price: 92.0, currency: 'USD' },
+                'IEF': { price: 93.0, currency: 'USD' },
+                'GLD': { price: 215.0, currency: 'USD' },
+                'DBC': { price: 22.5, currency: 'USD' },
+                'IJS': { price: 102.0, currency: 'USD' },
+                'SHY': { price: 82.5, currency: 'USD' },
+                'MTUM': { price: 185.0, currency: 'USD' },
+                'IEI': { price: 118.0, currency: 'USD' },
+                'AAPL': { price: 210.0, currency: 'USD' },
+                'MSFT': { price: 420.0, currency: 'USD' },
+                'TSLA': { price: 180.0, currency: 'USD' },
+                'SPCX': { price: 25.0, currency: 'USD' },
+                'RDDT': { price: 60.0, currency: 'USD' },
+                'ALAB': { price: 55.0, currency: 'USD' }
+            };
+            if (fallbackRegistry[upperSymbol]) {
+                return fallbackRegistry[upperSymbol];
+            }
+            let defaultPrice = 100.0;
+            let defaultCurrency = 'USD';
+            if (exchange === 'kospi' || exchange === 'kosdaq' || /^\d{6}$/.test(symbol)) {
+                defaultPrice = 50000.0;
+                defaultCurrency = 'KRW';
+            } else if (exchange === 'japan') {
+                defaultPrice = 2000.0;
+                defaultCurrency = 'JPY';
+            }
+            return { price: defaultPrice, currency: defaultCurrency };
+        }
+    }
 
     async function fetchHistorical10yData(symbol, exchange) {
         let yahooSymbol = symbol;
@@ -5602,8 +5490,10 @@ document.addEventListener("DOMContentLoaded", () => {
         else if (exchange === 'kosdaq') yahooSymbol = symbol + '.KQ';
         else if (exchange === 'japan') yahooSymbol = symbol + '.T';
 
-        // 10 years interval
         try {
+            if (symbol.toUpperCase() === 'SPCX') {
+                throw new Error("Force simulation for mock stock SPCX");
+            }
             const url = `https://query1.finance.yahoo.com/v8/finance/chart/${yahooSymbol}?interval=1wk&range=10y`;
             const json = await fetchWithProxyFallback(url);
             const result = json.chart.result[0];
@@ -5624,42 +5514,45 @@ document.addEventListener("DOMContentLoaded", () => {
                     });
                 }
             }
+
+            if (history.length < 5) {
+                throw new Error("Insufficient historical data points from API");
+            }
+
             return { history, currency };
         } catch (e) {
             console.warn(`Failed to fetch 10y history for ${symbol}, simulating...`);
-            // Simulating historical price mapping
             const history = [];
             const now = Date.now();
             const weekMs = 7 * 24 * 60 * 60 * 1000;
-            const steps = 520; // 10 years in weeks
+            
+            const isSpcx = (symbol.toUpperCase() === 'SPCX');
+            const listingTime = isSpcx ? new Date('2025-12-01').getTime() : (now - (10 * 365 * 24 * 60 * 60 * 1000));
+            const steps = isSpcx ? Math.max(5, Math.floor((now - listingTime) / weekMs)) : 520;
             
             const isKRW_JPY = exchange === 'kospi' || exchange === 'kosdaq' || exchange === 'japan';
             const baseValue = isKRW_JPY ? (exchange === 'japan' ? 5000 : 50000) : 150;
             let simPrice = baseValue;
 
-            // IPO year limitation: 10% chance that stock was listed less than 10 years ago (e.g. listed 4 years ago)
-            const listLimitSteps = Math.random() > 0.85 ? Math.floor(steps * 0.4) : 0;
-
             for (let i = steps; i >= 0; i--) {
                 const time = now - (i * weekMs);
-                const change = (Math.random() - 0.485) * 0.02; // slightly bullish bias
+                if (time < listingTime) continue;
+                const change = (Math.random() - 0.485) * 0.02;
                 simPrice = simPrice * (1 + change);
-
-                if (i > listLimitSteps) {
-                    history.push({
-                        time: time,
-                        price: simPrice
-                    });
-                }
+                history.push({
+                    time: time,
+                    price: simPrice
+                });
             }
-            const currency = (exchange === 'nasdaq' || exchange === 'nyse') ? 'USD' : (exchange === 'japan' ? 'JPY' : 'KRW');
-            return { history, currency };
+            return { history, currency: isKRW_JPY ? (exchange === 'japan' ? 'JPY' : 'KRW') : 'USD' };
         }
     }
 
     async function runPortfolioBacktest() {
+
+
         if (portfolio.length === 0) {
-            alert('포트폴리오에 분석할 종목이 없습니다.');
+            showToast('포트폴리오에 분석할 종목이 없습니다.', 'error');
             return;
         }
 
@@ -5670,8 +5563,21 @@ document.addEventListener("DOMContentLoaded", () => {
         const historyPromises = portfolio.map(item => fetchHistorical10yData(item.symbol, item.exchange));
         const historicalResults = await Promise.all(historyPromises);
 
+        // Find the latest IPO date among all portfolio items to determine common start point
+        latestIpoTime = 0;
+        let latestIpoSymbol = '';
+        historicalResults.forEach((res, index) => {
+            const history = res.history;
+            if (history && history.length > 0) {
+                const ipoTime = history[0].time;
+                if (ipoTime > latestIpoTime) {
+                    latestIpoTime = ipoTime;
+                    latestIpoSymbol = portfolio[index].symbol;
+                }
+            }
+        });
+
         // Fetch DXY, USD/KRW, and JPY/KRW historical proxy benchmarks for precise multi-currency conversion
-        // Fallback utilizes contemporary rate ratios
         const now = Date.now();
         const weekMs = 7 * 24 * 60 * 60 * 1000;
         const steps = 520; // 10 years
@@ -5707,9 +5613,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 // Determine currency rate at 't'
                 let rateAtT = 1;
                 if (currency !== 'KRW') {
-                    // Simulating historical exchange rates to offer high fidelity tracking
                     const currentRate = getKrwExchangeRate(currency);
-                    // Add slight historical walk variation to contemporary rate
                     const yearsAgo = (now - t) / (365 * 24 * 60 * 60 * 1000);
                     const historicalWalk = 1 + (Math.sin(yearsAgo) * 0.08); // Max 8% swing
                     rateAtT = currentRate * historicalWalk;
@@ -5724,6 +5628,91 @@ document.addEventListener("DOMContentLoaded", () => {
             };
         });
 
+        // Filter valid data points based on selected period and latest IPO date to prevent math division errors
+        let limitMs = 5 * 365 * 24 * 60 * 60 * 1000; // default 5 years
+        const periodConfig = {
+            '10y': 10 * 365 * 24 * 60 * 60 * 1000,
+            '7y': 7 * 365 * 24 * 60 * 60 * 1000,
+            '5y': 5 * 365 * 24 * 60 * 60 * 1000,
+            '3y': 3 * 365 * 24 * 60 * 60 * 1000,
+            '1y': 365 * 24 * 60 * 60 * 1000,
+            '6mo': 180 * 24 * 60 * 60 * 1000
+        };
+        limitMs = periodConfig[backtestPeriod] || limitMs;
+
+        const validSeries = simulationSeries.filter(d => (now - d.x) <= limitMs && d.x >= latestIpoTime);
+
+        // Control warning / notice banner for short-history stocks
+        const noticeEl = document.getElementById('portfolio-backtest-notice');
+        const noticeTextEl = document.getElementById('portfolio-backtest-notice-text');
+        
+        const oldestTimeInGrid = now - (steps * weekMs);
+        if (latestIpoTime > oldestTimeInGrid && (now - latestIpoTime) < limitMs) {
+            if (noticeEl && noticeTextEl) {
+                const limitMonths = Math.max(1, Math.round((now - latestIpoTime) / (30 * 24 * 60 * 60 * 1000)));
+                const ipoDateStr = new Date(latestIpoTime).toISOString().split('T')[0];
+                
+                noticeTextEl.innerText = `포트폴리오에 최근 상장된 종목(예: ${latestIpoSymbol}, 상장일: ${ipoDateStr})이 포함되어 있습니다. 해당 종목의 상장 이전 기간은 분석에서 제외되었으며, 가용한 최근 ${limitMonths}개월간의 실적만 차트에 표시됩니다.`;
+                noticeEl.style.display = 'flex';
+            }
+        } else if (latestIpoTime > oldestTimeInGrid && (now - latestIpoTime) >= limitMs) {
+            // If the IPO is within 10 years but older than the current selected timeframe, we can show normal or brief notice
+            if (noticeEl && noticeTextEl) {
+                const ipoDateStr = new Date(latestIpoTime).toISOString().split('T')[0];
+                noticeTextEl.innerText = `포트폴리오에 상장일이 제한적인 종목(예: ${latestIpoSymbol}, 상장일: ${ipoDateStr})이 포함되어 있습니다. 더 긴 분석 기간(예: 10년) 선택 시 상장 이전 기간은 제외되어 분석됩니다.`;
+                noticeEl.style.display = 'flex';
+            }
+        } else {
+            if (noticeEl) noticeEl.style.display = 'none';
+        }
+
+        // 실제 보유 자산 총액 및 환율 정보 출력
+        const startUsdKrwRate = getKrwExchangeRate('USD') * (1 + Math.sin(10) * 0.08);
+        const endUsdKrwRate = getKrwExchangeRate('USD');
+        
+        const startKrw = validSeries.length > 0 ? validSeries[0].y : 0;
+        const startUsd = startKrw / startUsdKrwRate;
+        
+        const endKrw = validSeries.length > 0 ? validSeries[validSeries.length - 1].y : 0;
+        const endUsd = endKrw / endUsdKrwRate;
+        
+        const endKrwHedged = endUsd * startUsdKrwRate;
+        const exchangeEffect = endKrw - endKrwHedged;
+        const exchangeEffectPct = endKrwHedged > 0 ? (exchangeEffect / endKrwHedged * 100) : 0;
+
+        const summaryEl = document.getElementById('portfolio-backtest-summary');
+        if (summaryEl) {
+            summaryEl.style.display = 'block';
+            
+            const effectColor = exchangeEffect >= 0 ? '#10b981' : '#f43f5e';
+            const effectSign = exchangeEffect >= 0 ? '+' : '';
+            const effectWord = exchangeEffect >= 0 ? '환차익' : '환차손';
+
+            summaryEl.innerHTML = `
+                <div style="font-weight: 700; color: #fff; margin-bottom: 8px; font-size: 13.5px; border-left: 3px solid var(--accent); padding-left: 6px;">실제 보유자산 분석 요약</div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 10px;">
+                    <div>
+                        <span style="color: var(--text-muted); font-size: 11px; display: block; margin-bottom: 2px;">시작 자산 (가용 시점 기준)</span>
+                        <strong style="color: #fff; font-size: 15px;">${Math.round(startKrw).toLocaleString()} 원</strong>
+                        <div style="color: var(--text-secondary); font-size: 11.5px; margin-top: 2px;">
+                            $${startUsd.toLocaleString(undefined, { maximumFractionDigits: 0 })} USD (당시 환율 ${startUsdKrwRate.toFixed(1)}원)
+                        </div>
+                    </div>
+                    <div>
+                        <span style="color: var(--text-muted); font-size: 11px; display: block; margin-bottom: 2px;">최종 자산 (현재)</span>
+                        <strong style="color: var(--accent); font-size: 15px;">${Math.round(endKrw).toLocaleString()} 원</strong>
+                        <div style="color: var(--text-secondary); font-size: 11.5px; margin-top: 2px;">
+                            $${endUsd.toLocaleString(undefined, { maximumFractionDigits: 0 })} USD (현재 환율 ${endUsdKrwRate.toFixed(1)}원)
+                        </div>
+                    </div>
+                </div>
+                <div style="background: rgba(255,255,255,0.02); padding: 8px 12px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.04); font-size: 12px; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
+                    <span>환헤지 가치 (당시 환율 고정): <strong style="color:#fff;">${Math.round(endKrwHedged).toLocaleString()} 원</strong></span>
+                    <span>환율 효과: <strong style="color:${effectColor};">${effectSign}${Math.round(exchangeEffect).toLocaleString()} 원 (${effectSign}${exchangeEffectPct.toFixed(1)}% ${effectWord})</strong></span>
+                </div>
+            `;
+        }
+
         await renderBacktestChartOnly();
     }
 
@@ -5735,7 +5724,7 @@ document.addEventListener("DOMContentLoaded", () => {
             portfolioBacktestChart.destroy();
         }
 
-        // Filter data points based on selected period
+        // Filter data points based on selected period AND latest IPO date
         const now = Date.now();
         let limitMs = 5 * 365 * 24 * 60 * 60 * 1000; // default 5 years
         
@@ -5749,7 +5738,7 @@ document.addEventListener("DOMContentLoaded", () => {
         };
         limitMs = periodConfig[backtestPeriod] || limitMs;
 
-        const filteredData = simulationSeries.filter(d => (now - d.x) <= limitMs);
+        const filteredData = simulationSeries.filter(d => (now - d.x) <= limitMs && d.x >= latestIpoTime);
 
         portfolioBacktestChart = new Chart(ctx.getContext('2d'), {
             type: 'line',
@@ -5784,6 +5773,8 @@ document.addEventListener("DOMContentLoaded", () => {
                 scales: {
                     x: {
                         type: 'time',
+                        min: now - limitMs,
+                        max: now,
                         time: { unit: backtestPeriod === '6mo' || backtestPeriod === '1y' ? 'month' : 'year', displayFormats: { month: 'yyyy-MM', year: 'yyyy' } },
                         grid: { color: 'rgba(255, 255, 255, 0.03)' },
                         ticks: { color: '#64748b' }
@@ -5796,6 +5787,127 @@ document.addEventListener("DOMContentLoaded", () => {
             }
         });
     }
+
+    // 포트폴리오 분석 시계열 차트 렌더러
+    async function renderAnalysisChartOnly() {
+        const ctx = document.getElementById('chart-analysis-time-series');
+        if (!ctx || analysisSimulationSeries.length === 0) return;
+
+        if (analysisTimeSeriesChart) {
+            analysisTimeSeriesChart.destroy();
+        }
+
+        const now = Date.now();
+        let limitMs = 10 * 365 * 24 * 60 * 60 * 1000;
+        
+        const periodConfig = {
+            '10y': 10 * 365 * 24 * 60 * 60 * 1000,
+            '7y': 7 * 365 * 24 * 60 * 60 * 1000,
+            '5y': 5 * 365 * 24 * 60 * 60 * 1000,
+            '3y': 3 * 365 * 24 * 60 * 60 * 1000,
+            '1y': 365 * 24 * 60 * 60 * 1000,
+            '6mo': 180 * 24 * 60 * 60 * 1000
+        };
+        limitMs = periodConfig[analysisPeriod] || limitMs;
+
+        const filteredData = analysisSimulationSeries.filter(d => (now - d.x) <= limitMs);
+
+        analysisTimeSeriesChart = new Chart(ctx.getContext('2d'), {
+            type: 'line',
+            data: {
+                datasets: [{
+                    label: selectedAnalysisTarget === 'my' ? '내 포트폴리오' : '추천 포트폴리오',
+                    data: filteredData,
+                    borderColor: '#00f2fe',
+                    backgroundColor: 'rgba(0, 242, 254, 0.05)',
+                    borderWidth: 2,
+                    fill: true,
+                    pointRadius: 0,
+                    pointHoverRadius: 6,
+                    tension: 0.2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return ` 평가금액: ${Math.round(context.parsed.y).toLocaleString()} 원`;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        type: 'time',
+                        time: { 
+                            unit: analysisPeriod === '6mo' || analysisPeriod === '1y' ? 'month' : 'year', 
+                            displayFormats: { month: 'yyyy-MM', year: 'yyyy' } 
+                        },
+                        grid: { color: 'rgba(255, 255, 255, 0.03)' }
+                    },
+                    y: {
+                        grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                        ticks: { callback: function(value) { return (value / 10000).toLocaleString() + '만'; } }
+                    }
+                }
+            }
+        });
+    }
+
+    // 비교 및 상세 카드에 쓸 환율 분석 요약 HTML 렌더러
+    function renderExchangeDetailHtml(result) {
+        const startRate = result.startUsdKrwRate.toFixed(1);
+        const endRate = result.endUsdKrwRate.toFixed(1);
+        const startUsd = result.startUsd.toLocaleString(undefined, { maximumFractionDigits: 0 });
+        const endUsd = result.endUsd.toLocaleString(undefined, { maximumFractionDigits: 0 });
+        const startKrw = result.startKrw.toLocaleString(undefined, { maximumFractionDigits: 0 });
+        const endKrw = result.endKrw.toLocaleString(undefined, { maximumFractionDigits: 0 });
+        const hedgedKrw = result.endKrwHedged.toLocaleString(undefined, { maximumFractionDigits: 0 });
+        
+        const effectVal = result.exchangeEffect;
+        const effectPct = ((result.endKrw - result.endKrwHedged) / result.endKrwHedged * 100);
+        const effectSign = effectVal >= 0 ? '+' : '';
+        const effectColor = effectVal >= 0 ? '#ef4444' : '#3b82f6';
+        const effectWord = effectVal >= 0 ? '환차익' : '환차손';
+
+        return `
+            <div style="color: var(--text-muted); font-weight: 700; margin-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 4px;">💱 환율 분석 상세 (1,000만원 기준)</div>
+            <div style="display: flex; justify-content: space-between; margin-bottom: 3px; font-size: 11px;">
+                <span>시작 자산:</span>
+                <span style="color: #fff;">$${startUsd} USD <span style="color: var(--text-muted); font-size:10px;">(당시 ${startRate}원)</span></span>
+            </div>
+            <div style="display: flex; justify-content: space-between; margin-bottom: 3px; font-size: 11px;">
+                <span>최종 자산:</span>
+                <span style="color: #fff;">$${endUsd} USD <span style="color: var(--text-muted); font-size:10px;">(현재 ${endRate}원)</span> ➔ ${endKrw}원</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; margin-bottom: 3px; font-size: 11px;">
+                <span>환헤지 가치:</span>
+                <span style="color: #fff;">${hedgedKrw}원 <span style="color: var(--text-muted); font-size:10px;">(당시 환율 고정)</span></span>
+            </div>
+            <div style="display: flex; justify-content: space-between; font-weight: 700; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 4px; font-size: 11px; margin-top: 4px;">
+                <span>환율 효과:</span>
+                <span style="color: ${effectColor};">${effectSign}${effectVal.toLocaleString(undefined, { maximumFractionDigits: 0 })}원 (${effectSign}${effectPct.toFixed(1)}% ${effectWord})</span>
+            </div>
+        `;
+    }
+
+    // 분석 탭 기간 필터 버튼 이벤트 바인딩
+    document.querySelectorAll('#analysis-chart-timeframe .time-btn').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+            document.querySelectorAll('#analysis-chart-timeframe .time-btn').forEach(b => b.classList.remove('active'));
+            e.target.classList.add('active');
+            analysisPeriod = e.target.getAttribute('data-period');
+            if (typeof runPortfolioAnalysis === 'function') {
+                await runPortfolioAnalysis();
+            } else {
+                await renderAnalysisChartOnly();
+            }
+        });
+    });
 
     initializeDashboard();
     initTickerSearch();
@@ -6424,7 +6536,7 @@ document.addEventListener("DOMContentLoaded", () => {
                      (backupData.data.recentSearches && backupData.data.recentSearches.length > 0))
                 ) {
                     portfolio = backupData.data.portfolio || [];
-                    localStorage.setItem('my_portfolio_items', JSON.stringify(portfolio));
+                    savePortfolio();
                     
                     recentSearches = backupData.data.recentSearches || [];
                     localStorage.setItem('recent_searches', JSON.stringify(recentSearches));
@@ -6513,9 +6625,10 @@ document.addEventListener("DOMContentLoaded", () => {
             triggerGoogleDriveSync(true);
         });
     }
-
     // Initialize UI on load
     updateGoogleAuthUI();
+    updatePortfolioHeaderBadge();
+    
     if (isMockGoogle || (GOOGLE_CLIENT_ID && !GOOGLE_CLIENT_ID.startsWith('YOUR_GOOGLE_CLIENT_ID'))) {
         initGIS(GOOGLE_CLIENT_ID || 'mock-client-id');
         if (localStorage.getItem('google_oauth_token')) {
@@ -6556,4 +6669,17 @@ document.addEventListener("DOMContentLoaded", () => {
             if (compLine) compLine.style.display = 'block';
         });
     }
-});
+
+    // Expose variables for testing and console inspection at page load
+    window.portfolio = portfolio;
+    window.renderPortfolioModal = renderPortfolioModal;
+    window.fetchHistorical10yData = fetchHistorical10yData;
+    window.runPortfolioBacktest = runPortfolioBacktest;
+}
+
+if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", initDashboardApp);
+} else {
+    initDashboardApp();
+}
+
